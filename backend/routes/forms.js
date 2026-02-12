@@ -15,49 +15,27 @@ router.get("/", (req, res) => {
   );
 });
 
-
-
-/* GET SINGLE FORM BY ID */
-router.get("/:id", (req, res) => {
-  const formId = req.params.id;
-
-  db.query(
-    "SELECT * FROM forms WHERE id = ?",
-    [formId],
-    (err, result) => {
-      if (err) return res.status(500).json({ message: "Error" });
-
-      if (result.length === 0) {
-        return res.status(404).json({ message: "Form not found" });
-      }
-
-      res.json(result[0]);
-    }
-  );
-});
-
-
-
-
-
+ 
 router.get("/:id/student-status",  (req, res) => {
   const formId = req.params.id;
 
   try {
     // Get assignments
     db.query(
-      "SELECT assigned_to_user_id, assigned_to_group_id FROM form_assignments WHERE form_id = ?",
+      "SELECT student_id, group_id FROM form_assignments WHERE form_id = ?",
       [formId],
       (err, assignments) => {
         if (err) return res.status(500).json({ message: "Error" });
 
         const directUserIds = assignments
-          .filter(a => a.assigned_to_user_id)
-          .map(a => a.assigned_to_user_id);
+        .filter(a => a.student_id)
+        .map(a => a.student_id);
+        
 
         const groupIds = assignments
-          .filter(a => a.assigned_to_group_id)
-          .map(a => a.assigned_to_group_id);
+        .filter(a => a.group_id)
+        .map(a => a.group_id);
+        
 
         if (groupIds.length > 0) {
           db.query(
@@ -81,7 +59,8 @@ router.get("/:id/student-status",  (req, res) => {
           if (userIds.length === 0) return res.json([]);
 
           db.query(
-            "SELECT id, full_name, email, reg_no FROM profiles WHERE id IN (?)",
+           "SELECT id, full_name, email, reg_no FROM users WHERE id IN (?)",
+
             [userIds],
             (err3, profiles) => {
               if (err3) return res.status(500).json({ message: "Error" });
@@ -128,16 +107,17 @@ router.get("/:id/stats", (req, res) => {
   const formId = req.params.id;
 
   const submissionQuery = `
-    SELECT COUNT(*) AS submitted
-    FROM form_submissions
-    WHERE form_id = ?
-  `;
+  SELECT COUNT(*) AS submitted
+  FROM form_submissions
+  WHERE form_id = ?
+`;
 
-  const assignmentQuery = `
-    SELECT assigned_to_user_id, assigned_to_group_id, due_date
-    FROM form_assignments
-    WHERE form_id = ?
-  `;
+const assignmentQuery = `
+  SELECT student_id, group_id, due_date
+  FROM form_assignments
+  WHERE form_id = ?
+`;
+
 
   db.query(submissionQuery, [formId], (err1, submissionResult) => {
     if (err1) return res.status(500).json({ message: "Error" });
@@ -151,17 +131,22 @@ router.get("/:id/stats", (req, res) => {
       let groupIds = [];
 
       assignments.forEach(a => {
-        if (a.assigned_to_user_id) totalAssigned++;
-        if (a.assigned_to_group_id) groupIds.push(a.assigned_to_group_id);
+        if (a.student_id) totalAssigned++;
+        if (a.group_id) groupIds.push(a.group_id);
       });
+      
+      
 
       if (groupIds.length === 0) {
         return sendResponse();
       }
 
       db.query(
-        `SELECT COUNT(*) AS count FROM group_memberships WHERE group_id IN (?)`,
+        `SELECT COUNT(DISTINCT user_id) AS count 
+         FROM group_memberships 
+         WHERE group_id IN (?)`,
         [groupIds],
+      
         (err3, groupResult) => {
           if (!err3) {
             totalAssigned += groupResult[0].count;
