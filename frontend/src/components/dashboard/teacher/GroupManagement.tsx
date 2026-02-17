@@ -7,6 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -53,6 +61,7 @@ interface Student {
   id: string;
   full_name: string | null;
   email: string;
+  mobile: string | null;   // ✅ ADD THIS
   reg_no: string | null;
   degree: string | null;
   branch: string | null;
@@ -80,6 +89,9 @@ export function GroupManagement() {
   const [isManageMembersOpen, setIsManageMembersOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
+
 
   // Form state
   const [formData, setFormData] = useState({
@@ -98,6 +110,28 @@ export function GroupManagement() {
   useEffect(() => {
     fetchData();
   }, []);
+  
+
+  useEffect(() => {
+    if (
+      formData.degree &&
+      formData.branch &&
+      formData.year &&
+      formData.section
+    ) {
+      const autoName = `${formData.degree} - ${formData.branch} - ${formData.year} Year - Section ${formData.section}`;
+  
+      setFormData((prev) => ({
+        ...prev,
+        name: autoName,
+      }));
+    }
+  }, [
+    formData.degree,
+    formData.branch,
+    formData.year,
+    formData.section,
+  ]);
   
   const fetchData = async () => {
     setIsLoading(true);
@@ -179,7 +213,17 @@ export function GroupManagement() {
         }),
       });
   
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const errorData = await res.json();
+      
+        toast.error(
+          errorData.message || "Group already exists for this selection"
+        );
+      
+        setIsSubmitting(false);
+        return;
+      }
+      
   
       toast.success("Group created successfully");
       setIsCreateOpen(false);
@@ -225,21 +269,31 @@ export function GroupManagement() {
     }
   };
   
-  const handleDeleteGroup = async (group: Group) => {
-    if (!confirm(`Are you sure you want to delete "${group.name}"?`)) return;
+  const handleDeleteGroup = (group: Group) => {
+    setGroupToDelete(group);
+    setIsDeleteOpen(true);
+  };
+  const confirmDeleteGroup = async () => {
+    if (!groupToDelete) return;
   
+    setIsSubmitting(true);
     try {
-      await fetch(`http://localhost:5000/api/groups/${group.id}`, {
+      await fetch(`http://localhost:5000/api/groups/${groupToDelete.id}`, {
         method: "DELETE",
       });
   
       toast.success("Group deleted");
+      setIsDeleteOpen(false);
+      setGroupToDelete(null);
       fetchData();
     } catch (error) {
       console.error(error);
       toast.error("Failed to delete group");
+    } finally {
+      setIsSubmitting(false);
     }
   };
+  
   
 
   const handleOpenManageMembers = async (group: Group) => {
@@ -380,7 +434,11 @@ export function GroupManagement() {
                   key={group.id}
                   className="border border-border rounded-xl overflow-hidden"
                 >
-                  <div className="flex items-center justify-between p-4">
+                 <div
+  className="flex items-center justify-between p-4 cursor-pointer"
+  onClick={() => handleToggleExpand(group.id)}
+>
+
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
                         <Users className="w-5 h-5 text-primary" />
@@ -453,25 +511,27 @@ export function GroupManagement() {
                               <TableHead>Name</TableHead>
                               <TableHead>Reg No</TableHead>
                               <TableHead>Email</TableHead>
+                              <TableHead>Contact no</TableHead>
                               <TableHead>Details</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {groupMembers.get(group.id)?.map(member => (
-                              <TableRow key={member.id}>
-                                <TableCell className="font-medium">
-                                  {member.full_name || 'Unknown'}
-                                </TableCell>
-                                <TableCell>{member.reg_no || '-'}</TableCell>
-                                <TableCell>{member.email}</TableCell>
-                                <TableCell className="text-muted-foreground">
-                                  {[member.degree, member.branch, member.year, member.section]
-                                    .filter(Boolean)
-                                    .join(' • ')}
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
+  {groupMembers.get(group.id)?.map(member => (
+    <TableRow key={member.id}>
+      <TableCell className="font-medium">
+        {member.full_name || 'Unknown'}
+      </TableCell>
+      <TableCell>{member.reg_no || '-'}</TableCell>
+      <TableCell>{member.email}</TableCell>
+      <TableCell>{member.mobile || '-'}</TableCell>
+      <TableCell className="text-muted-foreground">
+        {[member.degree, member.branch, member.year, member.section]
+          .filter(Boolean)
+          .join(' • ')}
+      </TableCell>
+    </TableRow>
+  ))}
+</TableBody>
                         </Table>
                       ) : (
                         <p className="text-center text-muted-foreground py-4">
@@ -497,8 +557,8 @@ export function GroupManagement() {
             <div>
               <label className="text-sm font-medium">Group Name *</label>
               <Input
-                value={formData.name}
-                onChange={e => setFormData({ ...formData, name: e.target.value })}
+  value={formData.name}
+  readOnly
                 placeholder="e.g., B.Tech CSE 3rd Year Section A"
               />
             </div>
@@ -510,40 +570,97 @@ export function GroupManagement() {
                 placeholder="Optional description"
               />
             </div>
+            
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium">Degree</label>
-                <Input
-                  value={formData.degree}
-                  onChange={e => setFormData({ ...formData, degree: e.target.value })}
-                  placeholder="e.g., B.Tech"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Branch</label>
-                <Input
-                  value={formData.branch}
-                  onChange={e => setFormData({ ...formData, branch: e.target.value })}
-                  placeholder="e.g., CSE"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Year</label>
-                <Input
-                  value={formData.year}
-                  onChange={e => setFormData({ ...formData, year: e.target.value })}
-                  placeholder="e.g., 3"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Section</label>
-                <Input
-                  value={formData.section}
-                  onChange={e => setFormData({ ...formData, section: e.target.value })}
-                  placeholder="e.g., A"
-                />
-              </div>
-            </div>
+  {/* Degree */}
+  <div>
+    <label className="text-sm font-medium">Degree</label>
+    <Select
+      value={formData.degree}
+      onValueChange={(value) =>
+        setFormData({ ...formData, degree: value })
+      }
+    >
+      <SelectTrigger>
+        <SelectValue placeholder="Select Degree" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="B.E">B.E</SelectItem>
+        <SelectItem value="B.Tech">B.Tech</SelectItem>
+        <SelectItem value="M.Tech">M.Tech</SelectItem>
+        <SelectItem value="MBA">MBA</SelectItem>
+        <SelectItem value="BBA">BBA</SelectItem>
+      </SelectContent>
+    </Select>
+  </div>
+
+  {/* Branch */}
+  <div>
+    <label className="text-sm font-medium">Branch</label>
+    <Select
+      value={formData.branch}
+      onValueChange={(value) =>
+        setFormData({ ...formData, branch: value })
+      }
+    >
+      <SelectTrigger>
+        <SelectValue placeholder="Select Branch" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="CSE">CSE</SelectItem>
+        <SelectItem value="IT">IT</SelectItem>
+        <SelectItem value="ECE">ECE</SelectItem>
+        <SelectItem value="EEE">EEE</SelectItem>
+        <SelectItem value="MECH">MECH</SelectItem>
+        <SelectItem value="CIVIL">CIVIL</SelectItem>
+      </SelectContent>
+    </Select>
+  </div>
+
+  {/* Year */}
+  <div>
+    <label className="text-sm font-medium">Year</label>
+    <Select
+      value={formData.year}
+      onValueChange={(value) =>
+        setFormData({ ...formData, year: value })
+      }
+    >
+      <SelectTrigger>
+        <SelectValue placeholder="Select Year" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="1">1</SelectItem>
+        <SelectItem value="2">2</SelectItem>
+        <SelectItem value="3">3</SelectItem>
+        <SelectItem value="4">4</SelectItem>
+      </SelectContent>
+    </Select>
+  </div>
+
+  {/* Section */}
+  <div>
+    <label className="text-sm font-medium">Section</label>
+    <Select
+      value={formData.section}
+      onValueChange={(value) =>
+        setFormData({ ...formData, section: value })
+      }
+    >
+      <SelectTrigger>
+        <SelectValue placeholder="Select Section" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="A">A</SelectItem>
+        <SelectItem value="B">B</SelectItem>
+        <SelectItem value="C">C</SelectItem>
+        <SelectItem value="D">D</SelectItem>
+      </SelectContent>
+    </Select>
+  </div>
+</div>
+
+            
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
@@ -644,6 +761,7 @@ export function GroupManagement() {
                     <TableHead className="w-12"></TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Reg No</TableHead>
+                    <TableHead>Contact No</TableHead>
                     <TableHead>Email</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -690,6 +808,7 @@ export function GroupManagement() {
               {selectedStudents.size} student(s) selected
             </p>
           </div>
+          
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsManageMembersOpen(false)}>
               Cancel
@@ -701,6 +820,46 @@ export function GroupManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Delete Group Dialog */}
+<Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Delete Group</DialogTitle>
+    </DialogHeader>
+
+    <div className="py-4 text-sm text-muted-foreground">
+      Are you sure you want to delete{" "}
+      <span className="font-semibold text-foreground">
+        "{groupToDelete?.name}"
+      </span>
+      ? This action cannot be undone.
+    </div>
+
+    <DialogFooter>
+      <Button
+        variant="outline"
+        onClick={() => {
+          setIsDeleteOpen(false);
+          setGroupToDelete(null);
+        }}
+      >
+        Cancel
+      </Button>
+
+      <Button
+        variant="destructive"
+        onClick={confirmDeleteGroup}
+        disabled={isSubmitting}
+      >
+        {isSubmitting && (
+          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+        )}
+        Delete
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+
     </div>
   );
 }
