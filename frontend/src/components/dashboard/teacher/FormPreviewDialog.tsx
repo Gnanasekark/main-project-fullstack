@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { FileSpreadsheet, Hash, Type, Calendar, ToggleLeft } from 'lucide-react';
+import { FileSpreadsheet, Hash, Type, Calendar, ToggleLeft,AlignLeft,Upload } from 'lucide-react';
 
 interface FormField {
   id: string;
@@ -33,6 +33,8 @@ const fieldTypeIcons: Record<string, React.ElementType> = {
   number: Hash,
   date: Calendar,
   boolean: ToggleLeft,
+  textarea: AlignLeft,   // ✅ Long Text
+  file: Upload, 
 };
 
 export function FormPreviewDialog({ form, open, onOpenChange }: FormPreviewDialogProps) {

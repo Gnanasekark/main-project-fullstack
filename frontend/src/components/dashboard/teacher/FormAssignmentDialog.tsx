@@ -54,6 +54,8 @@ export function FormAssignmentDialog({ formId, formTitle, open, onOpenChange, on
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [groupStudents, setGroupStudents] = useState([]);
+
 
   useEffect(() => {
     if (open) {
@@ -145,6 +147,25 @@ await fetch("http://localhost:5000/api/form-assignments", {
     }
   };
   
+  const handleGroupSelect = async (groupId: number) => {
+    try {
+      const res = await fetch(
+        `http://localhost:5000/api/groups/${groupId}/students`
+      );
+  
+      const data = await res.json();
+      // Remove duplicates using Map
+const uniqueStudents = Array.from(
+  new Map(data.map((s: any) => [s.id, s])).values()
+);
+
+setGroupStudents(uniqueStudents);
+
+    } catch (error) {
+      console.error("Failed to fetch group students");
+    }
+  };
+  
 
   const toggleGroup = (groupId: string) => {
     setSelectedGroups(prev => 
@@ -168,11 +189,16 @@ await fetch("http://localhost:5000/api/form-assignments", {
     g.degree?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredStudents = students.filter(s => 
+  const uniqueStudents = Array.from(
+    new Map(students.map(s => [s.id, s])).values()
+  );
+  
+  const filteredStudents = uniqueStudents.filter(s =>
     s.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     s.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
     s.reg_no?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+  
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -203,9 +229,12 @@ await fetch("http://localhost:5000/api/form-assignments", {
                 Groups ({selectedGroups.length})
               </TabsTrigger>
               <TabsTrigger value="students" className="flex items-center gap-2">
-                <User className="w-4 h-4" />
-                Students ({selectedStudents.length})
-              </TabsTrigger>
+  <User className="w-4 h-4" />
+  Students ({selectedStudents.length})
+
+</TabsTrigger>
+
+
             </TabsList>
 
             <TabsContent value="groups" className="mt-4">
@@ -227,14 +256,47 @@ await fetch("http://localhost:5000/api/form-assignments", {
                               ? 'border-primary bg-primary/5'
                               : 'border-border hover:border-primary/50'
                           }`}
-                          onClick={() => toggleGroup(group.id)}
+                          onClick={async () => {
+                            const isAlreadySelected = selectedGroups.includes(group.id);
+                          
+                            toggleGroup(group.id);
+                          
+                            try {
+                              const res = await fetch(
+                                `http://localhost:5000/api/groups/${group.id}/students`
+                              );
+                          
+                              if (res.ok) {
+                                const data = await res.json();
+                          
+                                const unique = Array.from(
+                                  new Map(data.map((s: any) => [s.id, s])).values()
+                                );
+                          
+                                setGroupStudents(unique);
+                          
+                                // 🔥 AUTO SELECT STUDENTS WHEN GROUP SELECTED
+                                if (!isAlreadySelected) {
+                                  setSelectedStudents(unique.map((s: any) => s.id));
+                                } else {
+                                  setSelectedStudents([]);
+                                  setGroupStudents([]);
+                                }
+                              }
+                            } catch (error) {
+                              console.error("Failed to fetch group students");
+                            }
+                          }}
+                          
+
                         >
                           <Checkbox checked={selectedGroups.includes(group.id)} />
                           <div className="flex-1">
                             <p className="font-medium">{group.name}</p>
                             <p className="text-sm text-muted-foreground">
-                              {group.member_count} members
-                            </p>
+                            {group.member_count || 0} members
+</p>
+
                           </div>
                           <Badge variant="outline">
                             {group.degree} - {group.branch}
@@ -255,10 +317,35 @@ await fetch("http://localhost:5000/api/form-assignments", {
               ) : (
                 <ScrollArea className="h-[200px]">
                   <div className="space-y-2">
-                    {filteredStudents.length === 0 ? (
-                      <p className="text-center text-muted-foreground py-4">No students found</p>
-                    ) : (
-                      filteredStudents.map((student) => (
+                  {groupStudents.length > 0 ? (
+  groupStudents.map((student: any) => (
+    <div
+      key={student.id}
+      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer ${
+        selectedStudents.includes(student.id)
+          ? 'border-primary bg-primary/5'
+          : 'border-border hover:border-primary/50'
+      }`}
+      onClick={() => toggleStudent(student.id)}
+    >
+      <Checkbox checked={selectedStudents.includes(student.id)} />
+      <div className="flex-1">
+        <p className="font-medium">
+          {student.full_name || "Unnamed"}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Reg No: {student.reg_no || "-"}
+        </p>
+      </div>
+    </div>
+  ))
+) : filteredStudents.length === 0 ? (
+  <p className="text-center text-muted-foreground py-4">
+    No students found
+  </p>
+) : (
+  filteredStudents.map((student) => (
+
                         <div
                           key={student.id}
                           className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${

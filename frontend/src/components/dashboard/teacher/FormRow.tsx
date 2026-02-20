@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useAuth } from "@/hooks/useAuth";
 
 import { toast } from 'sonner';
 import { 
@@ -35,10 +36,15 @@ interface Form {
   original_filename: string | null;
   is_active: boolean;
   created_at: string;
+
+  sender_name?: string;      // 🔥 ADD THIS
+  sender_email?: string;     // 🔥 ADD THIS
+
   config: {
     fields: FormField[];
   };
 }
+
 
 interface FormRowProps {
   form: Form;
@@ -58,6 +64,8 @@ interface FormStats {
 }
 
 export function FormRow({ form, onRefresh, onPreview, onAssign, onViewResponses, onEditFields }: FormRowProps) {
+  const { user } = useAuth();
+
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -231,6 +239,23 @@ export function FormRow({ form, onRefresh, onPreview, onAssign, onViewResponses,
                 {getStatusIcon()}
                 <span className="ml-1">{getStatusText()}</span>
               </Badge>
+               
+               {/* SHARED BY (only if not creator) */}
+{form.sender_email &&
+ user?.email &&
+ form.sender_email !== user.email && (
+  <div className="w-full mt-1">
+    <div
+      className="text-[11px] px-2 py-1 rounded-md
+                 bg-blue-50 text-blue-700
+                 border border-blue-200"
+    >
+      Shared by {form.sender_name} ({form.sender_email})
+    </div>
+  </div>
+)}
+
+
               {stats.totalAssigned > 0 && (
                 <>
                   <Badge variant="outline" className="bg-blue-500/10 text-blue-600">

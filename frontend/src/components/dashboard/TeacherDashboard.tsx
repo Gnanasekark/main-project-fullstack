@@ -36,6 +36,7 @@ import { FormResponsesDialog } from './teacher/FormResponsesDialog';
 import { FormFieldEditorDialog } from './teacher/FormFieldEditorDialog';
 import { CircularsSection } from './teacher/CircularsSection';
 import { FormsSplitView } from './teacher/FormsSplitView';
+import { FormUploadDialog } from './teacher/FormUploadDialog';
 
 interface FormField {
   id: string;
@@ -74,31 +75,44 @@ export function TeacherDashboard({ showFormsOnly = false, showCircularsOnly = fa
   const [totalResponses, setTotalResponses] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
   const [assignedCount, setAssignedCount] = useState(0);
-  const [formStats, setFormStats] = useState<Record<string, { assigned: number; submitted: number; pending: number }>>({});
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
 
-  useEffect(() => {
-    const init = async () => {
-      await fetchForms();
-      await fetchResponseCount();
-      await fetchAssignmentStats();
-    };
+  const [formStats, setFormStats] = useState<Record<string, { assigned: number; submitted: number; pending: number }>>({});
   
-    init();
-  }, []);
+  
+// Load forms only once
+useEffect(() => {
+  fetchForms();
+  fetchAssignmentStats();
+  fetchResponseCount();
+}, []);
+
+
+// When dropdown changes → refresh stats only
+useEffect(() => {
+  if (selectedFormId) {
+    fetchFormSpecificStats();
+  }
+}, [selectedFormId]);
+
   
   useEffect(() => {
     if (forms.length > 0) {
       fetchFormSpecificStats();
     }
-  }, [forms]);
+  }, [forms, selectedFormId]);
+  
 
   const fetchForms = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/forms", {
-        credentials: "include",
-      })
+      const token = localStorage.getItem("token");
+
+const res = await fetch("http://localhost:5000/api/forms", {
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+});
+
        
       if (!res.ok) throw new Error('Failed to fetch forms');
   
@@ -165,82 +179,27 @@ export function TeacherDashboard({ showFormsOnly = false, showCircularsOnly = fa
 
   const fetchFormSpecificStats = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/teacher/forms/stats', {
-        credentials: 'include',
-      });
+      const token = localStorage.getItem("token");
+
+const res = await fetch(
+  "http://localhost:5000/api/teacher/forms/stats",
+  {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }
+);
+
   
       if (!res.ok) return;
   
       const data = await res.json();
-      setFormStats(data || {});
+      setFormStats(data);
     } catch (error) {
-      console.error('Error fetching form-specific stats:', error);
+      console.error("Error fetching stats:", error);
     }
   };
   
-
-  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
-      toast.error('Please upload an Excel file (.xlsx or .xls)');
-      return;
-    }
-
-    setIsUploading(true);
-
-    try {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data);
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as string[][];
-
-      if (jsonData.length < 1) {
-        toast.error('Excel file must have at least a header row');
-        return;
-      }
-
-      const headers = jsonData[0];
-      const fields = headers.map((header, index) => ({
-        id: `field_${index}`,
-        label: String(header),
-        type: 'text' as const,
-        required: false,
-      }));
-
-      const res = await fetch('http://localhost:5000/api/forms', {
-
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          title: file.name.replace(/\.(xlsx|xls)$/, ''),
-          description: `Form generated from ${file.name}`,
-          original_filename: file.name,
-          config: { fields },
-        }),
-      });
-      
-      if (!res.ok) {
-        throw new Error('Failed to create form');
-      }
-      
-
-      toast.success('Form created successfully!');
-      fetchForms();
-    } catch (error) {
-      console.error('Error processing file:', error);
-      toast.error('Failed to process Excel file');
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  }, []);
-
 
   const greeting = () => {
     const hour = new Date().getHours();
@@ -304,15 +263,10 @@ export function TeacherDashboard({ showFormsOnly = false, showCircularsOnly = fa
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileUpload}
-            accept=".xlsx,.xls"
-            className="hidden"
-          />
+          
           <Button 
-            onClick={() => fileInputRef.current?.click()}
+           onClick={() => setIsUploadOpen(true)}
+
             disabled={isUploading}
           >
             {isUploading ? (
@@ -352,7 +306,7 @@ export function TeacherDashboard({ showFormsOnly = false, showCircularsOnly = fa
                 <Select
                 value={selectedFormId ?? ''}
 
-                  onValueChange={(value) => setSelectedFormId(value || null)}
+                  onValueChange={(value) => setSelectedFormId(value)}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select a form..." />
@@ -448,10 +402,15 @@ export function TeacherDashboard({ showFormsOnly = false, showCircularsOnly = fa
 
                     </span>
                   </div>
-                  <Progress 
-                    value={(selectedFormStats.submitted / selectedFormStats.assigned) * 100} 
-                    className="h-3"
-                  />
+                  <Progress
+  value={
+    selectedFormStats.assigned > 0
+      ? (selectedFormStats.submitted / selectedFormStats.assigned) * 100
+      : 0
+  }
+  className="h-3"
+/>
+
                 </div>
               )}
             </CardContent>
@@ -521,8 +480,9 @@ export function TeacherDashboard({ showFormsOnly = false, showCircularsOnly = fa
                 Column headers become form fields.
               </p>
               <Button 
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
+              
+
+              disabled={isUploading}
                 size="lg"
               >
                 {isUploading ? (
@@ -590,6 +550,7 @@ export function TeacherDashboard({ showFormsOnly = false, showCircularsOnly = fa
       </motion.div>
 
       {/* Dialogs */}
+      
       <FormPreviewDialog
         form={previewForm}
         open={!!previewForm}
@@ -606,6 +567,7 @@ export function TeacherDashboard({ showFormsOnly = false, showCircularsOnly = fa
           fetchForms();
         }}
       />
+      
 
       <FormResponsesDialog
         form={responsesForm}
@@ -621,7 +583,20 @@ export function TeacherDashboard({ showFormsOnly = false, showCircularsOnly = fa
           setEditFieldsForm(null);
           fetchForms();
         }}
+        
       />
-    </div>
+    {/* Upload Dialog */}
+<FormUploadDialog
+  open={isUploadOpen}
+  onOpenChange={setIsUploadOpen}
+  folders={[]}
+  onSuccess={() => {
+    setIsUploadOpen(false);
+    fetchForms();
+  }}
+/>
+
+</div>
+    
   );
 }

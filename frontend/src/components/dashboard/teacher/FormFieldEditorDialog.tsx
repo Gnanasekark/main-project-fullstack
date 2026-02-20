@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-
+import { Paperclip } from 'lucide-react';
 import { toast } from 'sonner';
 import { 
   Loader2, 
@@ -48,7 +48,9 @@ const FIELD_TYPES = [
   { value: 'number', label: 'Number', icon: Hash },
   { value: 'date', label: 'Date', icon: Calendar },
   { value: 'boolean', label: 'Yes/No', icon: ToggleLeft },
-  { value: 'textarea', label: 'Long Text', icon: AlignLeft },
+    { value: 'textarea', label: 'Long Text', icon: AlignLeft },
+    { value: 'file', label: 'File Upload', icon: Paperclip }, // ✅ ADD THIS
+
 ];
 
 export function FormFieldEditorDialog({ form, open, onOpenChange, onSave }: FormFieldEditorDialogProps) {

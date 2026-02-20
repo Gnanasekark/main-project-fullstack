@@ -1,185 +1,103 @@
 import express from "express";
-import db from "../db.js";
+import db from "../config/db.js";
 import jwt from "jsonwebtoken";
+
+
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "secret123";
 
-router.get("/", (req, res) => {
-  db.query(
-    "SELECT * FROM forms ORDER BY created_at DESC",
-    (err, result) => {
-      if (err) return res.status(500).json(err);
-      res.json(result);
-    }
-  );
+
+
+const uploadDir = "uploads";
+
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + "-" + file.originalname);
+  },
 });
 
- 
-router.get("/:id/student-status",  (req, res) => {
-  const formId = req.params.id;
+const upload = multer({ storage });
 
+
+router.get("/", async (req, res) => {
   try {
-    // Get assignments
-    db.query(
-      "SELECT student_id, group_id FROM form_assignments WHERE form_id = ?",
-      [formId],
-      (err, assignments) => {
-        if (err) return res.status(500).json({ message: "Error" });
+    const authHeader = req.headers.authorization;
 
-        const directUserIds = assignments
-        .filter(a => a.student_id)
-        .map(a => a.student_id);
-        
+    if (!authHeader) {
+      return res.status(401).json({ message: "No token" });
+    }
 
-        const groupIds = assignments
-        .filter(a => a.group_id)
-        .map(a => a.group_id);
-        
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.id;
 
-        if (groupIds.length > 0) {
-          db.query(
-            "SELECT user_id FROM group_memberships WHERE group_id IN (?)",
-            [groupIds],
-            (err2, memberships) => {
-              if (err2) return res.status(500).json({ message: "Error" });
+    const query = `
+      SELECT DISTINCT f.*, u.full_name AS sender_name, u.email AS sender_email
+      FROM forms f
+      LEFT JOIN form_permissions fp ON f.id = fp.form_id
+      LEFT JOIN users u ON f.created_by = u.id
+      WHERE 
+        f.created_by = ?
+        OR fp.user_id = ?
+      ORDER BY f.created_at DESC
+    `;
 
-              const groupMemberIds = memberships.map(m => m.user_id);
-              const allUserIds = [...new Set([...directUserIds, ...groupMemberIds])];
+    db.query(query, [userId, userId], (err, rows) => {
+      if (err) return res.status(500).json(err);
+      res.json(rows);
+    });
 
-              fetchProfilesAndSubmissions(allUserIds);
-            }
-          );
-        } else {
-          const allUserIds = [...new Set(directUserIds)];
-          fetchProfilesAndSubmissions(allUserIds);
-        }
-
-        function fetchProfilesAndSubmissions(userIds) {
-          if (userIds.length === 0) return res.json([]);
-
-          db.query(
-           "SELECT id, full_name, email, reg_no FROM users WHERE id IN (?)",
-
-            [userIds],
-            (err3, profiles) => {
-              if (err3) return res.status(500).json({ message: "Error" });
-
-              db.query(
-                "SELECT user_id, submitted_at, submission_data FROM form_submissions WHERE form_id = ?",
-                [formId],
-                (err4, submissions) => {
-                  if (err4) return res.status(500).json({ message: "Error" });
-
-                  const submissionMap = new Map(
-                    submissions.map(s => [s.user_id, s])
-                  );
-
-                  const result = profiles.map(p => {
-                    const sub = submissionMap.get(p.id);
-                    return {
-                      id: p.id,
-                      full_name: p.full_name,
-                      email: p.email,
-                      reg_no: p.reg_no,
-                      submitted: !!sub,
-                      submitted_at: sub?.submitted_at || null,
-                      submission_data: sub?.submission_data || null,
-                    };
-                  });
-
-                  res.json(result);
-                }
-              );
-            }
-          );
-        }
-      }
-    );
-  } catch (error) {
-    res.status(500).json({ message: "Server error" });
+  } catch (err) {
+    return res.status(401).json({ message: "Invalid token" });
   }
 });
 
-
-
+ 
 router.get("/:id/stats", (req, res) => {
   const formId = req.params.id;
 
-  const submissionQuery = `
-  SELECT COUNT(*) AS submitted
-  FROM form_submissions
-  WHERE form_id = ?
-`;
+  const query = `
+  SELECT 
+    COUNT(DISTINCT u.id) AS totalAssigned,
+    COUNT(DISTINCT fs.user_id) AS submitted
+  FROM form_assignments fa
+  LEFT JOIN group_memberships gm 
+    ON fa.assigned_to_group_id = gm.group_id
+  LEFT JOIN users u 
+    ON u.id = COALESCE(fa.assigned_to_user_id, gm.user_id)
+  LEFT JOIN form_submissions fs
+    ON fs.form_id = fa.form_id
+    AND fs.user_id = u.id
+  WHERE fa.form_id = ?
+  `;
 
-const assignmentQuery = `
-  SELECT student_id, group_id, due_date
-  FROM form_assignments
-  WHERE form_id = ?
-`;
+  db.query(query, [formId], (err, result) => {
+    if (err) return res.status(500).json({ message: "Error" });
 
+    const totalAssigned = result[0].totalAssigned || 0;
+    const submitted = result[0].submitted || 0;
+    const pending = totalAssigned - submitted;
 
-  db.query(submissionQuery, [formId], (err1, submissionResult) => {
-    if (err1) return res.status(500).json({ message: "Error" });
-
-    const submitted = submissionResult[0].submitted;
-
-    db.query(assignmentQuery, [formId], (err2, assignments) => {
-      if (err2) return res.status(500).json({ message: "Error" });
-
-      let totalAssigned = 0;
-      let groupIds = [];
-
-      assignments.forEach(a => {
-        if (a.student_id) totalAssigned++;
-        if (a.group_id) groupIds.push(a.group_id);
-      });
-      
-      
-
-      if (groupIds.length === 0) {
-        return sendResponse();
-      }
-
-      db.query(
-        `SELECT COUNT(DISTINCT user_id) AS count 
-         FROM group_memberships 
-         WHERE group_id IN (?)`,
-        [groupIds],
-      
-        (err3, groupResult) => {
-          if (!err3) {
-            totalAssigned += groupResult[0].count;
-          }
-          sendResponse();
-        }
-      );
-
-      function sendResponse() {
-        const pending = Math.max(0, totalAssigned - submitted);
-
-        const dueDates = assignments
-          .filter(a => a.due_date)
-          .map(a => new Date(a.due_date))
-          .sort((a, b) => a - b);
-
-        const nearestDueDate =
-          dueDates.length > 0 ? dueDates[0].toISOString() : null;
-
-        const isOverdue =
-          nearestDueDate ? new Date(nearestDueDate) < new Date() : false;
-
-        res.json({
-          totalAssigned,
-          submitted,
-          pending,
-          nearestDueDate,
-          isOverdue,
-        });
-      }
+    res.json({
+      totalAssigned,
+      submitted,
+      pending,
+      nearestDueDate: null,
+      isOverdue: false,
     });
   });
-});
+}); 
 
 
 /* GET SINGLE FORM */
@@ -212,6 +130,25 @@ router.get("/:id", (req, res) => {
   );
 });
 
+/* REJECT SUBMISSION (Resend Form) */
+router.put("/:formId/reject/:userId", (req, res) => {
+  const { formId, userId } = req.params;
+
+  const query = `
+    UPDATE form_submissions
+    SET status = 'rejected'
+    WHERE form_id = ? AND user_id = ?
+  `;
+
+  db.query(query, [formId, userId], (err) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ message: "Reject failed" });
+    }
+
+    res.json({ message: "Form resent to student" });
+  });
+});
 
 
 router.put("/:id/fields", (req, res) => {
@@ -225,7 +162,7 @@ router.put("/:id/fields", (req, res) => {
   const config = JSON.stringify({ fields });
 
   db.query(
-    "UPDATE forms SET config = ?, updated_at = NOW() WHERE id = ?",
+"UPDATE forms SET config = ? WHERE id = ?",
     [config, formId],
     (err) => {
       if (err) {
@@ -244,19 +181,19 @@ router.get("/:id/responses", (req, res) => {
   const formId = req.params.id;
 
   const query = `
-    SELECT 
-      fs.id,
-      fs.submitted_at,
-      fs.submission_data,
-      fs.user_id,
-      p.full_name,
-      p.email,
-      p.reg_no
-    FROM form_submissions fs
-    LEFT JOIN profiles p ON fs.user_id = p.id
-    WHERE fs.form_id = ?
-    ORDER BY fs.submitted_at DESC
-  `;
+SELECT 
+  fs.id,
+  fs.submitted_at,
+  fs.submission_data,
+  fs.user_id,
+  u.full_name,
+  u.email,
+  u.reg_no
+FROM form_submissions fs
+LEFT JOIN users u ON fs.user_id = u.id
+WHERE fs.form_id = ?
+ORDER BY fs.submitted_at DESC
+`;
 
   db.query(query, [formId], (err, results) => {
     if (err) {
@@ -266,20 +203,97 @@ router.get("/:id/responses", (req, res) => {
 
     const formatted = results.map(row => ({
       id: row.id,
-      submitted_at: row.submitted_at,
-      submission_data:
-        typeof row.submission_data === "string"
-          ? JSON.parse(row.submission_data)
-          : row.submission_data,
       user_id: row.user_id,
+      submitted_at: row.submitted_at,
+      submission_data: typeof row.submission_data === "string"
+        ? JSON.parse(row.submission_data)
+        : row.submission_data,
       profile: {
-        full_name: row.full_name,
-        email: row.email,
-        reg_no: row.reg_no,
+        full_name: row.full_name || "Unknown",
+        email: row.email || "-",
+        reg_no: row.reg_no || "-",
       },
     }));
 
     res.json(formatted);
+  });
+});
+
+/* Students status */
+/* Students status (Direct + Group Support) */
+router.get("/:id/student-status", (req, res) => {
+  const formId = req.params.id;
+
+  const query = `
+  SELECT DISTINCT
+    u.id,
+    u.full_name,
+    u.email,
+    u.reg_no,
+    u.mobile,                 -- ✅ ADD THIS
+    fs.submitted_at
+  FROM form_assignments fa
+
+  LEFT JOIN group_memberships gm
+    ON fa.assigned_to_group_id = gm.group_id
+
+  LEFT JOIN users u
+    ON u.id = COALESCE(fa.assigned_to_user_id, gm.user_id)
+
+  LEFT JOIN form_submissions fs
+    ON fs.form_id = fa.form_id
+    AND fs.user_id = u.id
+
+  WHERE fa.form_id = ?
+`;
+
+  db.query(query, [formId], (err, results) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    const formatted = results
+    .filter(row => row.id !== null)
+    .map(row => ({
+      id: row.id,
+      full_name: row.full_name,
+      email: row.email,
+      reg_no: row.reg_no,
+      phone: row.mobile, // ADD THIS
+      submitted: !!row.submitted_at,
+      submitted_at: row.submitted_at || null
+    }));
+
+    res.json(formatted);
+  });
+});
+
+
+
+
+
+/* GET ASSIGNED GROUPS FOR FORM */
+
+router.get("/:id/assigned-groups", (req, res) => {
+  const formId = req.params.id;
+
+  const query = `
+    SELECT DISTINCT g.id, g.name
+    FROM form_assignments fa
+    JOIN \`groups\` g 
+      ON g.id = fa.assigned_to_group_id
+    WHERE fa.form_id = ?
+      AND fa.assigned_to_group_id IS NOT NULL
+  `;
+
+  db.query(query, [formId], (err, results) => {
+    if (err) {
+      console.error("Assigned groups error:", err.sqlMessage);
+      return res.status(500).json({ message: err.sqlMessage });
+    }
+
+    res.json(results);
   });
 });
 
@@ -304,47 +318,83 @@ router.get("/:id/submission-status/:userId", (req, res) => {
   );
 });
 
-
-
-
-router.post("/", (req, res) => {
-  const {
-    title,
-    description,
-    original_filename,
-    created_by,
-    config
-  } = req.body;
-
-  const query = `
-    INSERT INTO forms 
-    (title, description, original_filename, created_by, config, is_active, created_at)
-    VALUES (?, ?, ?, ?, ?, 1, NOW())
-  `;
+/* RESEND FORM TO PARTICULAR USER */
+router.put("/:id/resend/:userId", (req, res) => {
+  const { id, userId } = req.params;
 
   db.query(
-    query,
-    [
-      title,
-      description,
-      original_filename,
-      created_by,
-      JSON.stringify(config),
-    ],
-    (err, result) => {
-      if (err) {
-        console.log(err);
-        return res.status(500).json({ message: "Insert failed" });
-      }
+    "DELETE FROM form_submissions WHERE form_id = ? AND user_id = ?",
+    [id, userId],
+    (err) => {
+      if (err) return res.status(500).json({ message: "Error" });
 
-      res.json({
-        id: result.insertId,
-        title,
-      });
+      res.json({ message: "Resent successfully" });
     }
   );
 });
 
+router.post("/", async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      original_filename,
+      created_by,
+      config,
+      view_permission,
+      assign_permission,
+      folder_id,
+      assigners,
+      viewers,
+    } = req.body;
+
+    const [result] = await db.promise().query(
+      `INSERT INTO forms 
+       (title, description, original_filename, created_by, config, view_permission, assign_permission, folder_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        title,
+        description,
+        original_filename,
+        created_by,
+        JSON.stringify(config),
+        view_permission,
+        assign_permission,
+        folder_id,
+      ]
+    );
+
+    const formId = result.insertId;
+
+    // Insert assign permissions
+    if (assigners && assigners.length > 0) {
+      for (let userId of assigners) {
+        await db.promise().query(
+          `INSERT INTO form_permissions (form_id, user_id, permission_type)
+           VALUES (?, ?, 'assign')`,
+          [formId, userId]
+        );
+      }
+    }
+
+    // Insert view permissions
+    if (viewers && viewers.length > 0) {
+      for (let userId of viewers) {
+        await db.promise().query(
+          `INSERT INTO form_permissions (form_id, user_id, permission_type)
+           VALUES (?, ?, 'view')`,
+          [formId, userId]
+        );
+      }
+    }
+
+    res.json({ id: formId });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "DB error" });
+  }
+});
 
 
 
@@ -355,10 +405,12 @@ router.delete("/:id", (req, res) => {
     res.json({ message: "Deleted" });
   });
 });
-router.post("/:id/submit", (req, res) => {
-  const formId = req.params.id;
-  const { submission_data } = req.body;
 
+
+
+
+router.post("/:id/submit", upload.any(), (req, res) => {
+  const formId = req.params.id;
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {
@@ -369,8 +421,21 @@ router.post("/:id/submit", (req, res) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-
     const userId = decoded.id;
+
+    const submissionData = {};
+
+    // Handle text fields
+    Object.keys(req.body).forEach(key => {
+      submissionData[key] = req.body[key];
+    });
+
+    // Handle file fields
+    if (req.files) {
+      req.files.forEach(file => {
+        submissionData[file.fieldname] = file.filename;
+      });
+    }
 
     const query = `
       INSERT INTO form_submissions
@@ -380,7 +445,7 @@ router.post("/:id/submit", (req, res) => {
 
     db.query(
       query,
-      [formId, userId, JSON.stringify(submission_data)],
+      [formId, userId, JSON.stringify(submissionData)],
       (err) => {
         if (err) {
           console.error(err);
@@ -396,5 +461,56 @@ router.post("/:id/submit", (req, res) => {
   }
 });
 
+/* REMIND ALL STUDENTS */
+router.post("/:id/remind-all", async (req, res) => {
+  const formId = req.params.id;
+  const { channel } = req.body;
 
-export default router;  
+  try {
+    // Get all pending students
+    const query = `
+     SELECT fa.assigned_to_user_id
+      FROM form_assignments fa
+      LEFT JOIN form_submissions fs 
+        ON fa.form_id = fs.form_id 
+        AND fa.assigned_to_user_id = fs.user_id
+      WHERE fa.form_id = ? 
+      AND fs.id IS NULL
+    `;
+
+    db.query(query, [formId], (err, students) => {
+      if (err) return res.status(500).json({ message: "DB error" });
+
+      if (students.length === 0) {
+        return res.json({ message: "No pending students" });
+      }
+
+      const values = students.map(s => [
+        s.assigned_to_user_id,
+        "Form Reminder",
+        "Please complete your assigned form.",
+        channel || "both",
+        formId,
+        "sent",
+        new Date(),
+      ]);
+
+      const insertQuery = `
+        INSERT INTO notifications
+        (user_id, title, message, channel, related_form_id, status, sent_at)
+        VALUES ?
+      `;
+
+      db.query(insertQuery, [values], (err2) => {
+        if (err2) return res.status(500).json({ message: "Insert error" });
+
+        res.json({ message: "Reminders sent successfully" });
+      });
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+export default router; 

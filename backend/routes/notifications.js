@@ -1,5 +1,5 @@
 import express from "express";
-import db from "../db.js";
+import db from "../config/db.js";
 import jwt from "jsonwebtoken";
 
 const router = express.Router();
@@ -37,14 +37,24 @@ router.get("/", (req, res) => {
 /* GET USER NOTIFICATIONS    */
 /* ========================= */
 router.get("/user/:id", (req, res) => {
-  db.query(
-    "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC",
-    [req.params.id],
-    (err, results) => {
-      if (err) return res.status(500).json({ message: "DB error" });
-      res.json(results);
-    }
-  );
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ message: "No token" });
+
+  try {
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    db.query(
+      "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC",
+      [decoded.id],
+      (err, results) => {
+        if (err) return res.status(500).json({ message: "DB error" });
+        res.json(results);
+      }
+    );
+  } catch {
+    res.status(401).json({ message: "Invalid token" });
+  }
 });
 
 

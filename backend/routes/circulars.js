@@ -2,7 +2,8 @@ import express from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import db from "../db.js";
+import db from "../config/db.js";
+
 
 const router = express.Router();
 

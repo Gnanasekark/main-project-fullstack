@@ -35,12 +35,7 @@ import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { FormResponsesDialog } from './FormResponsesDialog';
  
- interface FormField {
-   id: string;
-   label: string;
-   type: string;
-   required: boolean;
- }
+ 
  
  interface Form {
    id: string;
@@ -59,7 +54,6 @@ import { FormResponsesDialog } from './FormResponsesDialog';
    full_name: string | null;
    email: string;
    reg_no: string | null;
-   phone?: string;      // ADD THIS
    submitted: boolean;
    submitted_at?: string;
    submission_data?: Record<string, unknown>;
@@ -88,72 +82,47 @@ import { FormResponsesDialog } from './FormResponsesDialog';
   const [activeTab, setActiveTab] = useState('pending');
   const [responsesForm, setResponsesForm] = useState<Form | null>(null);
   const [sendingReminder, setSendingReminder] = useState<string | null>(null);
-  const [assignedGroups, setAssignedGroups] = useState<{ id: number; name: string }[]>([]);
-  
    useEffect(() => {
-    if (form) {
-      fetchStudentStatuses();
-      fetchAssignedGroups();
-    }
-  }, [form?.id]);
-
-
-  const fetchAssignedGroups = async () => {
-    if (!form) return;
-  
-    try {
-      const res = await fetch(
-        `http://localhost:5000/api/forms/${form.id}/assigned-groups`
-      );
-  
-      if (!res.ok) throw new Error("Failed");
-  
-      const data = await res.json();
-      setAssignedGroups(data);
-    } catch (err) {
-      console.error("Error fetching groups:", err);
-    }
-  };
+     if (form) {
+       fetchStudentStatuses();
+     }
+   }, [form?.id]);
  
    const fetchStudentStatuses = async () => {
     if (!form) return;
   
     setIsLoading(true);
     try {
-      const res = await fetch(
-        `http://localhost:5000/api/forms/${form.id}/student-status`
-      );
-  
-      if (!res.ok) throw new Error("Failed to fetch student statuses");
-  
+      const res = await fetch(`/api/forms/${form.id}/students`);
       const data = await res.json();
-      setStudents(data);
   
+      if (!res.ok) throw new Error(data.message);
+  
+      setStudents(data);
     } catch (error) {
-      console.error("Error fetching student statuses:", error);
+      console.error("Error fetching students:", error);
       toast.error("Failed to load student data");
     } finally {
       setIsLoading(false);
     }
   };
   
+ 
   const handleDelete = async () => {
-    if (!form || !confirm('Are you sure you want to delete this form?')) return;
+    if (!form || !confirm("Are you sure you want to delete this form?")) return;
   
     setIsDeleting(true);
     try {
-      const res = await fetch(
-        `http://localhost:5000/api/forms/${form.id}`,
-        { method: "DELETE" }
-      );
+      const res = await fetch(`/api/forms/${form.id}`, {
+        method: "DELETE",
+      });
   
-      if (!res.ok) throw new Error("Delete failed");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
   
       toast.success("Form deleted");
       onRefresh();
-  
     } catch (error) {
-      console.error("Error deleting form:", error);
       toast.error("Failed to delete form");
     } finally {
       setIsDeleting(false);
@@ -161,90 +130,70 @@ import { FormResponsesDialog } from './FormResponsesDialog';
   };
   
  
-  const handleDownload = async (type: "submitted" | "pending" | "all") => {
-    if (!form) return;
-  
-    setIsDownloading(true);
-    try {
-      let dataToExport: StudentStatus[] = [];
-  
-      if (type === "submitted") {
-        dataToExport = submittedStudents;
-      } else if (type === "pending") {
-        dataToExport = pendingStudents;
-      } else {
-        dataToExport = students; // full list
-      }
-  
-      if (dataToExport.length === 0) {
-        toast.info("No data to download");
-        setIsDownloading(false);
-        return;
-      }
-  
-      const headers = [
-        "Status",
-        "Submitted At",
-        "Reg No",
-        "Name",
-        "Email",
-        "Contact No",  // ADD
-      ];
-  
-      const rows = dataToExport.map((student) => [
-        student.submitted ? "Submitted" : "Pending",
-        student.submitted_at
-          ? new Date(student.submitted_at).toLocaleString()
-          : "-",
-        student.reg_no || "",
-        student.full_name || "",
-        student.email,
-        student.phone || "-",   // ADD
-      ]);
-  
-      const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Form Status");
-  
-      XLSX.writeFile(
-        workbook,
-        `${form.title.replace(/[^a-zA-Z0-9]/g, "_")}_${type}.xlsx`
-      );
-  
-      toast.success("Download successful");
-    } catch (error) {
-      toast.error("Download failed");
-    } finally {
-      setIsDownloading(false);
-    }
-  };
+   const handleDownload = async () => {
+     if (!form) return;
+     
+     setIsDownloading(true);
+     try {
+       const submittedStudents = students.filter(s => s.submitted);
+       
+       if (submittedStudents.length === 0) {
+         toast.info('No submissions to download');
+         setIsDownloading(false);
+         return;
+       }
+ 
+       const headers = ['Submitted At', 'Reg No', 'Name', ...form.config.fields.map(f => f.label)];
+       const rows = submittedStudents.map(student => [
+         student.submitted_at ? new Date(student.submitted_at).toLocaleString() : '',
+         student.reg_no || '',
+         student.full_name || '',
+         ...form.config.fields.map(f => {
+           const value = student.submission_data?.[f.id];
+           return value !== undefined && value !== null ? String(value) : '';
+         })
+       ]);
+ 
+       const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+       const colWidths = headers.map((h, i) => {
+         const maxLen = Math.max(h.length, ...rows.map(r => String(r[i] || '').length));
+         return { wch: Math.min(maxLen + 2, 50) };
+       });
+       worksheet['!cols'] = colWidths;
+ 
+       const workbook = XLSX.utils.book_new();
+       XLSX.utils.book_append_sheet(workbook, worksheet, 'Submissions');
+       XLSX.writeFile(workbook, `${form.title.replace(/[^a-zA-Z0-9]/g, '_')}_responses.xlsx`);
+       
+       toast.success(`Downloaded ${submittedStudents.length} response(s)`);
+     } catch (error) {
+       console.error('Error downloading:', error);
+       toast.error('Failed to download responses');
+     } finally {
+       setIsDownloading(false);
+     }
+   };
  
    const handleRemind = async (student: StudentStatus) => {
-    if (!form || !user) return;
+    if (!form) return;
   
     setSendingReminder(student.id);
-  
     try {
-      const res = await fetch("http://localhost:5000/api/notifications", {
+      const res = await fetch("/api/notifications/remind", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`, // 🔥 REQUIRED
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_ids: [student.id],              // ✅ must be array
-          title: `Reminder: ${form.title}`,
-          message: `Please complete the form "${form.title}" at your earliest convenience.`,
-          channel: "both",
+          user_id: student.id,
+          form_id: form.id,
+          title: form.title,
         }),
       });
   
-      if (!res.ok) throw new Error("Reminder failed");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
   
       toast.success(`Reminder sent to ${student.full_name || student.email}`);
-  
     } catch (error) {
-      console.error("Error sending reminder:", error);
       toast.error("Failed to send reminder");
     } finally {
       setSendingReminder(null);
@@ -253,49 +202,30 @@ import { FormResponsesDialog } from './FormResponsesDialog';
   
 
   const handleRemindAll = async () => {
-    if (!form || !user || pendingStudents.length === 0) return;
+    if (!form || pendingStudents.length === 0) return;
   
     setSendingReminder("all");
-  
     try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        toast.error("Not authenticated");
-        return;
-      }
+      const res = await fetch("/api/notifications/remind-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          students: pendingStudents.map(s => s.id),
+          form_id: form.id,
+          title: form.title,
+        }),
+      });
   
-      const res = await fetch(
-        "http://localhost:5000/api/notifications/bulk",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            user_ids: pendingStudents.map((s) => s.id), // ✅ correct
-            form_id: form.id,
-            title: `Reminder: ${form.title}`,
-            message: `Please complete the form "${form.title}" at your earliest convenience.`,
-            channel: "both",
-          }),
-        }
-      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
   
-      if (!res.ok) throw new Error("Bulk reminder failed");
-  
-      toast.success(
-        `Reminder sent to ${pendingStudents.length} student(s)`
-      );
-  
+      toast.success(`Reminder sent to ${pendingStudents.length} students`);
     } catch (error) {
-      console.error("Error sending reminders:", error);
       toast.error("Failed to send reminders");
     } finally {
       setSendingReminder(null);
     }
   };
-  
   
   const pendingStudents = students.filter(s => !s.submitted);
   const submittedStudents = students.filter(s => s.submitted);
@@ -318,7 +248,7 @@ import { FormResponsesDialog } from './FormResponsesDialog';
    }
  
    return (
-    <div className="flex-1 flex flex-col overflow-auto">
+     <div className="flex-1 flex flex-col overflow-hidden">
        {/* Form Header */}
        <div className="p-6 border-b border-border">
          <motion.div
@@ -330,18 +260,8 @@ import { FormResponsesDialog } from './FormResponsesDialog';
            <div className="flex-1 min-w-0">
              <h2 className="text-xl font-bold truncate">{form.title}</h2>
              <p className="text-sm text-muted-foreground mt-1">
-  {form.config.fields.length} fields • Created {new Date(form.created_at).toLocaleDateString()}
-</p>
-
-{assignedGroups.length > 0 && (
-  <div className="flex flex-wrap gap-2 mt-3">
-    {assignedGroups.map(group => (
-      <Badge key={group.id} variant="secondary">
-        {group.name}
-      </Badge>
-    ))}
-  </div>
-)}
+               {form.config.fields.length} fields • Created {new Date(form.created_at).toLocaleDateString()}
+             </p>
            </div>
            <div className="flex items-center gap-2 shrink-0">
              <Button size="sm" variant="outline" onClick={() => onPreview(form)}>
@@ -360,7 +280,7 @@ import { FormResponsesDialog } from './FormResponsesDialog';
          </motion.div>
  
          {/* Stats Cards */}
-         <div className="grid grid-cols-4 gap-4 mt-6">
+         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mt-6">
            <Card className="bg-blue-500/10 border-blue-500/20">
              <CardContent className="p-4">
                <div className="flex items-center gap-3">
@@ -415,7 +335,7 @@ import { FormResponsesDialog } from './FormResponsesDialog';
        </div>
  
        {/* Tabs for Pending/Submitted */}
-       <div className="flex-1 flex flex-col">
+       <div className="flex-1 flex flex-col overflow-hidden">
          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
            <div className="px-6 pt-4 border-b border-border">
              <TabsList className="bg-muted/50">
@@ -440,8 +360,8 @@ import { FormResponsesDialog } from './FormResponsesDialog';
              </TabsList>
            </div>
  
-           <TabsContent value="pending" className="m-0">
-           <div className="overflow-auto">
+           <TabsContent value="pending" className="flex-1 overflow-hidden m-0">
+             <ScrollArea className="h-full">
                <div className="p-6">
                  {isLoading ? (
                    <div className="flex items-center justify-center py-12">
@@ -483,50 +403,42 @@ import { FormResponsesDialog } from './FormResponsesDialog';
                             <TableHead>Reg No</TableHead>
                             <TableHead>Name</TableHead>
                             <TableHead>Email</TableHead>
-                            <TableHead>Contact No</TableHead>
                             <TableHead className="text-right">Action</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {pendingStudents.map((student) => (
                             <TableRow key={student.id}>
-  <TableCell className="font-medium">{student.reg_no || '-'}</TableCell>
-  <TableCell>{student.full_name || 'Unknown'}</TableCell>
-  <TableCell className="text-muted-foreground">{student.email}</TableCell>
-
-  {/* ✅ CONTACT NUMBER COLUMN */}
-  <TableCell>
-    {student.phone || "-"}
-  </TableCell>
-
-  {/* ✅ ACTION COLUMN */}
-  <TableCell className="text-right">
-    <Button
-      size="sm"
-      variant="outline"
-      onClick={() => handleRemind(student)}
-      disabled={sendingReminder === student.id}
-    >
-      {sendingReminder === student.id ? (
-        <Loader2 className="w-4 h-4 animate-spin mr-1" />
-      ) : (
-        <Bell className="w-4 h-4 mr-1" />
-      )}
-      Remind
-    </Button>
-  </TableCell>
-</TableRow>
+                              <TableCell className="font-medium">{student.reg_no || '-'}</TableCell>
+                              <TableCell>{student.full_name || 'Unknown'}</TableCell>
+                              <TableCell className="text-muted-foreground">{student.email}</TableCell>
+                              <TableCell className="text-right">
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => handleRemind(student)}
+                                  disabled={sendingReminder === student.id}
+                                >
+                                  {sendingReminder === student.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                                  ) : (
+                                    <Bell className="w-4 h-4 mr-1" />
+                                  )}
+                                  Remind
+                                </Button>
+                              </TableCell>
+                            </TableRow>
                           ))}
                         </TableBody>
                       </Table>
                     </>
                   )}
                </div>
-               </div>
+             </ScrollArea>
            </TabsContent>
  
-           <TabsContent value="submitted" className="m-0">
-          <div className="overflow-auto">
+           <TabsContent value="submitted" className="flex-1 overflow-hidden m-0">
+             <ScrollArea className="h-full">
                <div className="p-6">
                  {isLoading ? (
                    <div className="flex items-center justify-center py-12">
@@ -562,72 +474,51 @@ import { FormResponsesDialog } from './FormResponsesDialog';
                             <TableHead>Reg No</TableHead>
                             <TableHead>Name</TableHead>
                             <TableHead>Email</TableHead>
-                            <TableHead>Contact No</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-  {submittedStudents.map((student) => (
-    <TableRow key={student.id}>
-      <TableCell className="text-muted-foreground">
-        {student.submitted_at
-          ? new Date(student.submitted_at).toLocaleString()
-          : '-'}
-      </TableCell>
-
-      <TableCell className="font-medium">
-        {student.reg_no || '-'}
-      </TableCell>
-
-      <TableCell>
-        {student.full_name || 'Unknown'}
-      </TableCell>
-
-      <TableCell className="text-muted-foreground">
-        {student.email}
-      </TableCell>
-
-      {/* ✅ ADD THIS */}
-      <TableCell>
-        {student.phone || '-'}
-      </TableCell>
-    </TableRow>
-  ))}
-</TableBody>
+                          {submittedStudents.map((student) => (
+                            <TableRow key={student.id}>
+                              <TableCell className="text-muted-foreground">
+                                {student.submitted_at ? new Date(student.submitted_at).toLocaleString() : '-'}
+                              </TableCell>
+                              <TableCell className="font-medium">{student.reg_no || '-'}</TableCell>
+                              <TableCell>{student.full_name || 'Unknown'}</TableCell>
+                              <TableCell className="text-muted-foreground">{student.email}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
                       </Table>
                     </>
                   )}
                </div>
-               </div>
+             </ScrollArea>
            </TabsContent>
          </Tabs>
        </div>
  
        {/* Footer Actions */}
-       <div className="flex items-center gap-2">
-  <Button
-    variant="outline"
-    size="sm"
-    onClick={() => handleDownload("pending")}
-  >
-    Download Pending
-  </Button>
-
-  <Button
-    variant="outline"
-    size="sm"
-    onClick={() => handleDownload("submitted")}
-  >
-    Download Submitted
-  </Button>
-
-  <Button
-    variant="default"
-    size="sm"
-    onClick={() => handleDownload("all")}
-  >
-    Download Full Status
-  </Button>
-</div>
+       <div className="p-4 border-t border-border flex items-center justify-between bg-muted/30">
+         <Button 
+           variant="ghost" 
+           size="sm" 
+           onClick={handleDelete}
+           disabled={isDeleting}
+           className="text-destructive hover:text-destructive"
+         >
+           {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
+           Delete Form
+         </Button>
+         <Button 
+           variant="outline" 
+           size="sm" 
+           onClick={handleDownload}
+           disabled={isDownloading || submittedStudents.length === 0}
+         >
+           {isDownloading ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Download className="w-4 h-4 mr-1" />}
+           Download Responses
+         </Button>
+        </div>
 
         {/* Responses Dialog */}
         <FormResponsesDialog

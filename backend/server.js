@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import session from "express-session";
-
+import path from "path";
 import studentRoutes from "./routes/students.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import fileRoutes from "./routes/files.js";
@@ -13,12 +13,22 @@ import formRoutes from "./routes/forms.js";
 import groupRoutes from "./routes/groups.js";
 import formAssignmentsRoutes from "./routes/formAssignments.js";
 import notificationsRoutes from "./routes/notifications.js";
+import folderRoutes from "./routes/folders.js";
+
+
+
+
 
 dotenv.config();
 
 const app = express();
 
 app.use(express.json());
+
+app.use(
+  "/uploads",
+  express.static(path.join(process.cwd(), "uploads"))
+);
 
 app.use(cors({
   origin: "http://localhost:8080",
@@ -52,6 +62,9 @@ app.use("/api/forms", formRoutes);
 app.use("/api/groups", groupRoutes);
 app.use("/api/form-assignments", formAssignmentsRoutes);
 app.use("/api/notifications", notificationsRoutes);
+app.use("/api/folders", folderRoutes);
+app.use("/uploads", express.static("uploads"));
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

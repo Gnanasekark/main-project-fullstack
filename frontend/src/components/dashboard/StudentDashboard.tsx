@@ -23,6 +23,9 @@ interface FormWithAssignment {
   due_date: string | null;
   is_submitted: boolean;
   submitted_at: string | null;
+
+  sender_name?: string;
+  sender_email?: string;
 }
 
 interface StudentDashboardProps {
@@ -31,7 +34,7 @@ interface StudentDashboardProps {
 
 export function StudentDashboard({ showFormsOnly = false }: StudentDashboardProps) {
   const { profile, user, loading } = useAuth();
-
+  
   const navigate = useNavigate();
   const [forms, setForms] = useState<FormWithAssignment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -204,11 +207,17 @@ export function StudentDashboard({ showFormsOnly = false }: StudentDashboardProp
                         <FileSpreadsheet className="w-5 h-5 text-success" />
                       </div>
                       <div>
-                        <h4 className="font-semibold">{form.title}</h4>
-                        <p className="text-sm text-muted-foreground">
-                          Submitted {form.submitted_at ? new Date(form.submitted_at).toLocaleDateString() : ''}
-                        </p>
-                      </div>
+  <h4 className="font-semibold">{form.title}</h4>
+
+  <p className="text-xs text-muted-foreground mt-1">
+    From: {form.sender_name || "Unknown"}
+    {form.sender_email && <> ({form.sender_email})</>}
+  </p>
+
+  <p className="text-sm text-muted-foreground">
+    Submitted {form.submitted_at ? new Date(form.submitted_at).toLocaleDateString() : ''}
+  </p>
+</div>
                     </div>
                     <Badge variant="outline" className="bg-success/10 text-success border-success/30">
                       Completed
@@ -290,13 +299,23 @@ function FormCard({ form, onFill }: { form: FormWithAssignment; onFill: () => vo
           <FileSpreadsheet className={`w-5 h-5 ${isOverdue ? 'text-destructive' : 'text-primary'}`} />
         </div>
         <div>
-          <h4 className="font-semibold">{form.title}</h4>
-          <p className="text-sm text-muted-foreground">
-            {form.due_date
-              ? `Due: ${new Date(form.due_date).toLocaleDateString()}`
-              : 'No due date'}
-          </p>
-        </div>
+  <h4 className="font-semibold">{form.title}</h4>
+
+  {/* Staff Info */}
+  <p className="text-xs text-muted-foreground mt-1">
+    From: {form.sender_name || "Unknown"}
+    {form.sender_email && (
+      <> ({form.sender_email})</>
+    )}
+  </p>
+
+  {/* Due Date */}
+  <p className="text-sm text-muted-foreground">
+    {form.due_date
+      ? `Due: ${new Date(form.due_date).toLocaleDateString()}`
+      : 'No due date'}
+  </p>
+</div>
       </div>
       <div className="flex items-center gap-3">
         <Badge variant="outline" className={isOverdue ? 'bg-destructive/10 text-destructive border-destructive/30' : ''}>

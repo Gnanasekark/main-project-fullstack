@@ -1,5 +1,5 @@
 import express from "express";
-import db from "../db.js";
+import db from "../config/db.js";
 
 const router = express.Router();
 
@@ -17,15 +17,29 @@ router.get("/:userId/assigned-forms", (req, res) => {
 
       // Build assignment query
       let query = `
-      SELECT fa.id, fa.form_id, fa.due_date, f.title, f.description
+      SELECT DISTINCT 
+        fa.id, 
+        fa.form_id, 
+        fa.due_date, 
+        f.title, 
+        f.description,
+    
+        u.full_name AS sender_name,
+        u.email AS sender_email
+    
       FROM form_assignments fa
       JOIN forms f ON f.id = fa.form_id
-      WHERE fa.student_id = ?
-    `;
+      JOIN users u ON u.id = f.created_by   -- 🔥 IMPORTANT
     
-    if (groupIds.length > 0) {
-      query += ` OR fa.group_id IN (${groupIds.map(() => "?").join(",")})`;
-    }
+      WHERE (
+        fa.assigned_to_user_id = ?
+    `;
+
+if (groupIds.length > 0) {
+  query += ` OR fa.assigned_to_group_id IN (${groupIds.map(() => "?").join(",")})`;
+}
+
+query += `)`;
     
 
       db.query(query, [userId, ...groupIds], (err2, assignments) => {
@@ -72,6 +86,9 @@ router.get("/:userId/assigned-forms", (req, res) => {
                 due_date: a.due_date,
                 is_submitted: isSubmitted,
                 submitted_at: submittedAt,
+              
+                sender_name: a.sender_name,
+                sender_email: a.sender_email,
               };
             });
 

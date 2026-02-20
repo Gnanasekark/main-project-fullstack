@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { toast } from "sonner";
 
-import { toast } from 'sonner';
-import { FormsListPanel } from './FormsListPanel';
-import { FormDetailPanel } from './FormDetailPanel';
-import { FormPreviewDialog } from './FormPreviewDialog';
-import { FormAssignmentDialog } from './FormAssignmentDialog';
-import { FormFieldEditorDialog } from './FormFieldEditorDialog';
+import { FormsListPanel } from "./FormsListPanel";
+import { FormDetailPanel } from "./FormDetailPanel";
+import { FormPreviewDialog } from "./FormPreviewDialog";
+import { FormAssignmentDialog } from "./FormAssignmentDialog";
+import { FormFieldEditorDialog } from "./FormFieldEditorDialog";
+import { FormUploadDialog } from "./FormUploadDialog";
 
 interface FormField {
   id: string;
@@ -22,17 +23,30 @@ interface Form {
   original_filename: string | null;
   is_active: boolean;
   created_at: string;
+  folder_id?: string | null;
   config: {
     fields: FormField[];
   };
 }
 
+interface FolderItem {
+  id: string;
+  name: string;
+  created_by: string;
+}
+
 export function FormsSplitView() {
   const [forms, setForms] = useState<Form[]>([]);
+  const [folders, setFolders] = useState<FolderItem[]>([]);
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [formStats, setFormStats] = useState<Record<string, { assigned: number; submitted: number; pending: number }>>({});
-  
+  const [formStats, setFormStats] = useState<
+    Record<string, { assigned: number; submitted: number; pending: number }>
+  >({});
+
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+
   // Dialog states
   const [previewForm, setPreviewForm] = useState<Form | null>(null);
   const [assignForm, setAssignForm] = useState<Form | null>(null);
@@ -40,6 +54,7 @@ export function FormsSplitView() {
 
   useEffect(() => {
     fetchForms();
+    fetchFolders();
   }, []);
 
   useEffect(() => {
@@ -48,64 +63,94 @@ export function FormsSplitView() {
     }
   }, [forms]);
 
+  // ✅ FETCH FORMS
   const fetchForms = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/forms");
-  
+      const token = localStorage.getItem("token");
+
+const res = await fetch("http://localhost:5000/api/forms", {
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+});
+
       if (!res.ok) throw new Error("Failed to fetch forms");
-  
+
       const data = await res.json();
-  
+
       const formsList = data.map((form: any) => ({
         ...form,
-        config: typeof form.config === "string"
-          ? JSON.parse(form.config)
-          : form.config
+        config:
+          typeof form.config === "string"
+            ? JSON.parse(form.config)
+            : form.config,
       }));
-  
+
       setForms(formsList);
-  
+
       if (formsList.length > 0 && !selectedFormId) {
         setSelectedFormId(formsList[0].id);
       }
-  
     } catch (error) {
-      console.error('Error fetching forms:', error);
-      toast.error('Failed to load forms');
+      console.error(error);
+      toast.error("Failed to load forms");
     } finally {
       setIsLoading(false);
     }
   };
-  
 
-  const fetchFormStats = async () => {
+  // ✅ FETCH FOLDERS
+  const fetchFolders = async () => {
     try {
-      const statsMap: Record<string, { assigned: number; submitted: number; pending: number }> = {};
+      const token = localStorage.getItem("token");
   
-      for (const form of forms) {
+      const res = await fetch("http://localhost:5000/api/folders", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
   
-        const res = await fetch(`http://localhost:5000/api/forms/${form.id}/stats`);
+      if (!res.ok) return;
   
-        if (!res.ok) continue;
-  
-        const stats = await res.json();
-  
-        statsMap[form.id] = stats;
-      }
-  
-      setFormStats(statsMap);
-  
+      const data = await res.json();
+      setFolders(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Error fetching form stats:', error);
+      console.error("Error fetching folders:", error);
     }
   };
   
 
-  const selectedForm = forms.find(f => f.id === selectedFormId) || null;
+  // ✅ FETCH FORM STATS
+  const fetchFormStats = async () => {
+    try {
+      const statsMap: Record<
+        string,
+        { assigned: number; submitted: number; pending: number }
+      > = {};
+
+      for (const form of forms) {
+        const res = await fetch(
+          `http://localhost:5000/api/forms/${form.id}/stats`
+        );
+
+        if (!res.ok) continue;
+
+        const stats = await res.json();
+        statsMap[form.id] = stats;
+      }
+
+      setFormStats(statsMap);
+    } catch (error) {
+      console.error("Error fetching form stats:", error);
+    }
+  };
+
+  const selectedForm = forms.find((f) => f.id === selectedFormId) || null;
 
   const handleRefresh = () => {
     fetchForms();
     fetchFormStats();
+    fetchFolders();
   };
 
   return (
@@ -114,7 +159,7 @@ export function FormsSplitView() {
       animate={{ opacity: 1 }}
       className="h-[calc(100vh-8rem)] flex rounded-xl border border-border bg-background overflow-hidden"
     >
-      {/* Left Panel - Forms List */}
+      {/* LEFT PANEL */}
       <div className="w-80 shrink-0">
         <FormsListPanel
           forms={forms}
@@ -123,10 +168,14 @@ export function FormsSplitView() {
           formStats={formStats}
           isLoading={isLoading}
           onRefresh={handleRefresh}
+          folders={folders}
+          selectedFolderId={selectedFolderId}
+          onSelectFolder={setSelectedFolderId}
+          onUploadClick={() => setIsUploadOpen(true)} // ✅ OPEN DIALOG
         />
       </div>
 
-      {/* Right Panel - Form Details */}
+      {/* RIGHT PANEL */}
       <FormDetailPanel
         form={selectedForm}
         onPreview={setPreviewForm}
@@ -135,15 +184,24 @@ export function FormsSplitView() {
         onRefresh={handleRefresh}
       />
 
-      {/* Dialogs */}
+      {/* DIALOGS */}
+
+      <FormUploadDialog
+        open={isUploadOpen}
+        onOpenChange={setIsUploadOpen}
+        folders={folders}
+        onSuccess={handleRefresh}
+      />
+
       <FormPreviewDialog
         form={previewForm}
         open={!!previewForm}
         onOpenChange={(open) => !open && setPreviewForm(null)}
       />
+
       <FormAssignmentDialog
         formId={assignForm?.id || null}
-        formTitle={assignForm?.title || ''}
+        formTitle={assignForm?.title || ""}
         open={!!assignForm}
         onOpenChange={(open) => !open && setAssignForm(null)}
         onSuccess={() => {
@@ -151,6 +209,7 @@ export function FormsSplitView() {
           handleRefresh();
         }}
       />
+
       <FormFieldEditorDialog
         form={editFieldsForm}
         open={!!editFieldsForm}

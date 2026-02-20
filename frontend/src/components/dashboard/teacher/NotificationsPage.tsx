@@ -136,6 +136,28 @@ if (isTeacherOrAdmin) {
   }
 }
 
+// ✅ Fetch students
+if (isTeacherOrAdmin) {
+    const token = localStorage.getItem("token");
+  
+    const res = await fetch(
+      "http://localhost:5000/api/users/students",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+  
+    if (res.ok) {
+      const data = await res.json();
+      setStudents(data);
+    } else {
+      setStudents([]);
+    }
+  }
+  
+
   };
   
   
@@ -199,31 +221,27 @@ if (isTeacherOrAdmin) {
       }
   
       // 🔥 CASE 2: GROUP
-     if (formData.targetType === "group") {
-  const token = localStorage.getItem("token");
-
-  for (const groupId of formData.selectedGroupIds) {
-    const res = await fetch(
-      `http://localhost:5000/api/groups/${groupId}/students`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
-
-    if (!res.ok) continue;
-
-    const students = await res.json();
-
-    students.forEach((s: any) => {
-      if (!selectedUserIds.includes(s.id)) {
-        selectedUserIds.push(s.id);
-      }
-    });
+     // 🔥 CASE 2: MULTIPLE GROUPS
+if (formData.targetType === "group") {
+    const groupIds = Array.from(formData.selectedGroupIds);
+  
+    for (const groupId of groupIds) {
+      const res = await fetch(
+        `http://localhost:5000/api/groups/${groupId}/students`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+  
+      if (!res.ok) throw new Error("Failed to fetch group students");
+  
+      const groupStudents = await res.json();
+      selectedUserIds.push(...groupStudents.map((s: any) => s.id));
+    }
   }
-}
-
+  
   
       // 🔥 CASE 3: INDIVIDUAL
       if (formData.targetType === "individual") {
@@ -266,7 +284,6 @@ if (isTeacherOrAdmin) {
     }
   };
   
-  
   console.log("Forms state:", forms);
 
   return (
@@ -290,6 +307,8 @@ if (isTeacherOrAdmin) {
           </Button>
         )}
       </div>
+
+      
 
       {/* Search */}
       <Card>

@@ -1,108 +1,119 @@
 import express from "express";
-import db from "../db.js";
+import db from "../config/db.js";
+
+import jwt from "jsonwebtoken";
 
 const router = express.Router();
+const JWT_SECRET = process.env.JWT_SECRET || "secret123";
+
+
+
+/* GET ALL STAFF (Teachers) */
+router.get("/staff", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+      return res.status(401).json({ message: "No token" });
+    }
+
+    const token = authHeader.split(" ")[1];
+    jwt.verify(token, JWT_SECRET);
+
+    const [rows] = await db.promise().query(
+      "SELECT id, full_name, email FROM users WHERE role = 'teacher'"
+    );
+
+    res.json(rows);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching staff" });
+  }
+});
 
 // GET Form Analytics Stats
-router.get("/forms/stats", (req, res) => {
-
-  db.query("SELECT * FROM forms", (err, forms) => {
-    if (err) {
-      console.error("Error fetching forms:", err);
-      return res.status(500).json({ error: "Failed to fetch forms" });
-    }
+router.get("/forms/stats", async (req, res) => {
+  try {
+    const [forms] = await db.promise().query("SELECT id FROM forms");
 
     const stats = {};
-    let completed = 0;
 
-    if (forms.length === 0) {
-      return res.json(stats);
-    }
-
-    forms.forEach((form) => {
+    for (const form of forms) {
       const formId = form.id;
 
-      db.query(
-        `SELECT assigned_to_user_id, assigned_to_group_id 
-         FROM form_assignments 
+      const [assignedRows] = await db.promise().query(
+        `SELECT COUNT(DISTINCT assigned_to_user_id) as count
+         FROM form_assignments
          WHERE form_id = ?`,
-        [formId],
-        (err1, assignments) => {
-          if (err1) return;
-
-          let assigned = 0;
-
-          const directUsers = assignments.filter(a => a.assigned_to_user_id);
-          assigned += directUsers.length;
-
-          const groupIds = assignments
-            .filter(a => a.assigned_to_group_id)
-            .map(a => a.assigned_to_group_id);
-
-          const handleSubmissions = (assignedCount) => {
-            db.query(
-              `SELECT COUNT(*) as count 
-               FROM form_submissions 
-               WHERE form_id = ?`,
-              [formId],
-              (err3, submissions) => {
-                if (err3) return;
-
-                const submitted = submissions[0].count;
-                const pending = Math.max(0, assignedCount - submitted);
-
-                stats[formId] = {
-                  assigned: assignedCount,
-                  submitted,
-                  pending,
-                };
-
-                completed++;
-                if (completed === forms.length) {
-                  res.json(stats);
-                }
-              }
-            );
-          };
-
-          if (groupIds.length > 0) {
-            db.query(
-              `SELECT COUNT(*) as count 
-               FROM group_memberships 
-               WHERE group_id IN (?)`,
-              [groupIds],
-              (err2, groupMembers) => {
-                if (!err2) {
-                  assigned += groupMembers[0].count;
-                }
-                handleSubmissions(assigned);
-              }
-            );
-          } else {
-            handleSubmissions(assigned);
-          }
-        }
+        [formId]
       );
+
+      const assigned = assignedRows[0].count;
+
+      const [submittedRows] = await db.promise().query(
+        `SELECT COUNT(DISTINCT user_id) as count
+         FROM form_submissions
+         WHERE form_id = ?`,
+        [formId]
+      );
+
+      const submitted = submittedRows[0].count;
+      const pending = Math.max(0, assigned - submitted);
+
+      stats[formId] = { assigned, submitted, pending };
+    }
+
+    res.json(stats);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to fetch stats" });
+  }
+});
+
+
+
+
+router.get("/assignment-stats", async (req, res) => {
+  try {
+    const [assignedRows] = await db.promise().query(
+      `SELECT COUNT(*) as count FROM form_assignments`
+    );
+
+    const [submittedRows] = await db.promise().query(
+      `SELECT COUNT(*) as count FROM form_submissions`
+    );
+
+    const assigned = assignedRows[0].count;
+    const submitted = submittedRows[0].count;
+    const pending = Math.max(0, assigned - submitted);
+
+    res.json({
+      assigned,
+      submitted,
+      pending,
     });
 
-  });
+  } catch (error) {
+    console.error("Assignment stats error:", error);
+    res.status(500).json({ message: "Failed to fetch stats" });
+  }
 });
 
 
+router.get("/responses/count", async (req, res) => {
+  try {
+    const [rows] = await db.promise().query(
+      `SELECT COUNT(*) as count FROM form_submissions`
+    );
 
+    res.json({ count: rows[0].count });
 
-router.get("/assignment-stats", (req, res) => {
-  res.json({ assigned: 0, submitted: 0 });
-});
-
-router.get("/responses/count", (req, res) => {
-  res.json({ count: 0 });
-});
-router.get("/forms", (req, res) => {
-  db.query("SELECT * FROM forms ORDER BY created_at DESC", (err, rows) => {
-    if (err) return res.status(500).json({ message: "DB error" });
-    res.json(rows);
-  });
+  } catch (error) {
+    console.error("Response count error:", error);
+    res.status(500).json({ message: "Failed to fetch response count" });
+  }
 });
 
 

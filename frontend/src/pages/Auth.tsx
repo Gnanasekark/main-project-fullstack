@@ -379,6 +379,7 @@ const [showSignupPassword, setShowSignupPassword] = useState(false);
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="CSE">CSE</SelectItem>
+                                <SelectItem value="IT">IT</SelectItem>
                                 <SelectItem value="ECE">ECE</SelectItem>
                                 <SelectItem value="EEE">EEE</SelectItem>
                                 <SelectItem value="MECH">MECH</SelectItem>

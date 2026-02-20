@@ -141,6 +141,29 @@ export function FormResponsesDialog({ form, open, onOpenChange }: FormResponsesD
   };
 
   if (!form) return null;
+  const handleResend = async (userId: string) => {
+    if (!form) return;
+  
+    const confirmResend = window.confirm(
+      "Resend this form to this student?"
+    );
+    if (!confirmResend) return;
+  
+    try {
+      const res = await fetch(
+        `http://localhost:5000/api/forms/${form.id}/resend/${userId}`,
+        { method: "PUT" }
+      );
+  
+      if (!res.ok) throw new Error("Failed");
+  
+      alert("Form resent successfully");
+      fetchSubmissions(); // refresh table
+    } catch (err) {
+      alert("Failed to resend form");
+    }
+  };
+  
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -211,11 +234,14 @@ export function FormResponsesDialog({ form, open, onOpenChange }: FormResponsesD
                     <TableHead className="font-semibold sticky left-0 bg-muted/50">Submitted At</TableHead>
                     <TableHead className="font-semibold">Reg No</TableHead>
                     <TableHead className="font-semibold">Name</TableHead>
+                    <TableHead className="font-semibold">Resend</TableHead>
+
                     {form?.config?.fields?.map((field) => (
                       <TableHead key={field.id} className="font-semibold">
                         {field.label}
                       </TableHead>
                     ))}
+                    
                   </TableRow>
                   {/* Filter row */}
                   {showFilters && (
@@ -297,6 +323,7 @@ export function FormResponsesDialog({ form, open, onOpenChange }: FormResponsesD
   );
 }
 
+
 function formatCellValue(value: unknown, fieldType: string): React.ReactNode {
   if (value === null || value === undefined || value === '') {
     return <span className="text-muted-foreground italic">-</span>;
@@ -311,12 +338,30 @@ function formatCellValue(value: unknown, fieldType: string): React.ReactNode {
       ) : (
         <span className="text-muted-foreground">No</span>
       );
+
     case 'date':
       try {
         return new Date(strValue).toLocaleDateString();
       } catch {
         return strValue;
       }
+
+    case 'file':
+      return (
+        <div className="flex items-center gap-2">
+          <span className="truncate max-w-[150px]">{strValue}</span>
+
+          <a
+            href={`http://localhost:5000/uploads/${strValue}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline text-sm"
+          >
+            View
+          </a>
+        </div>
+      );
+
     default:
       return strValue;
   }

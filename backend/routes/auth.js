@@ -1,7 +1,7 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import db from "../db.js";
+import db from "../config/db.js";
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "secret123";
@@ -13,6 +13,21 @@ router.post("/register", async (req, res) => {
   if (!email || !password || !role || !userData?.full_name) {
     return res.status(400).json({ message: "All fields required" });
   }
+
+  // ✅ Gmail only validation
+if (!email.endsWith("@gmail.com")) {
+  return res.status(400).json({
+    message: "Only @gmail.com email addresses are allowed"
+  });
+}
+
+// ✅ 10 digit mobile validation
+if (!/^\d{10}$/.test(userData.mobile_number)) {
+  return res.status(400).json({
+    message: "Mobile number must be exactly 10 digits"
+  });
+}
+
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -85,6 +100,19 @@ router.post("/register", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });   // ✅ THIS WAS MISSING
+
+router.get("/staff", async (req, res) => {
+  try {
+    const [rows] = await db.promise().query(
+      "SELECT id, full_name, email FROM users WHERE role = 'teacher'"
+    );
+
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching staff" });
+  }
+});
+
 
 /* LOGIN */
 router.post("/login", (req, res) => {

@@ -118,47 +118,41 @@ export default function FormSubmission() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+  
     if (!form || !user) return;
-
-    // Validate required fields
-    const missingRequired = form.config.fields
-      .filter(f => f.required && !formData[f.id]?.trim())
-      .map(f => f.label);
-
-    if (missingRequired.length > 0) {
-      toast.error(`Please fill in required fields: ${missingRequired.join(', ')}`);
-      return;
-    }
-
-    setIsSubmitting(true);
+  
+    const formPayload = new FormData();
+  
+    form.config.fields.forEach((field) => {
+      if (field.type === "file") {
+        const fileInput = document.getElementById(field.id) as HTMLInputElement;
+        if (fileInput?.files?.[0]) {
+          formPayload.append(field.id, fileInput.files[0]);
+        }
+      } else {
+        formPayload.append(field.id, formData[field.id] || "");
+      }
+    });
+  
     try {
-      const res = await fetch(`http://localhost:5000/api/forms/${formId}/submit`, {
-
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${localStorage.getItem("token")}`
+      const res = await fetch(
+        `http://localhost:5000/api/forms/${formId}/submit`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
-          body: JSON.stringify({
-            submission_data: formData,
-          }),
+          body: formPayload,
         }
       );
-      
-      
-      if (!res.ok) {
-        throw new Error('Submission failed');
-      }
-      
-
-      toast.success('Form submitted successfully!');
+  
+      if (!res.ok) throw new Error("Failed");
+  
+      toast.success("Form submitted successfully!");
       setIsSubmitted(true);
-    } catch (error) {
-      console.error('Error submitting form:', error);
-      toast.error('Failed to submit form');
-    } finally {
-      setIsSubmitting(false);
+  
+    } catch (err) {
+      toast.error("Submission failed");
     }
   };
 
@@ -255,52 +249,68 @@ export default function FormSubmission() {
                       {field.label}
                       {field.required && <span className="text-destructive ml-1">*</span>}
                     </Label>
+                    
                     {field.type === 'textarea' ? (
-                      <Textarea
-                        id={field.id}
-                        value={formData[field.id] || ''}
-                        onChange={(e) => handleInputChange(field.id, e.target.value)}
-                        required={field.required}
-                        placeholder={`Enter ${field.label.toLowerCase()}`}
-                      />
-                    ) : field.type === 'date' ? (
-                      <Input
-                        id={field.id}
-                        type="date"
-                        value={formData[field.id] || ''}
-                        onChange={(e) => handleInputChange(field.id, e.target.value)}
-                        required={field.required}
-                      />
-                    ) : field.type === 'number' ? (
-                      <Input
-                        id={field.id}
-                        type="number"
-                        value={formData[field.id] || ''}
-                        onChange={(e) => handleInputChange(field.id, e.target.value)}
-                        required={field.required}
-                        placeholder={`Enter ${field.label.toLowerCase()}`}
-                      />
-                    ) : field.type === 'boolean' ? (
-                      <div className="flex items-center space-x-3 pt-2">
-                        <Switch
-                          id={field.id}
-                          checked={formData[field.id] === 'true'}
-                          onCheckedChange={(checked) => handleInputChange(field.id, checked ? 'true' : 'false')}
-                        />
-                        <Label htmlFor={field.id} className="text-sm text-muted-foreground">
-                          {formData[field.id] === 'true' ? 'Yes' : 'No'}
-                        </Label>
-                      </div>
-                    ) : (
-                      <Input
-                        id={field.id}
-                        type="text"
-                        value={formData[field.id] || ''}
-                        onChange={(e) => handleInputChange(field.id, e.target.value)}
-                        required={field.required}
-                        placeholder={`Enter ${field.label.toLowerCase()}`}
-                      />
-                    )}
+  <Textarea
+    id={field.id}
+    value={formData[field.id] || ''}
+    onChange={(e) => handleInputChange(field.id, e.target.value)}
+    required={field.required}
+    placeholder={`Enter ${field.label.toLowerCase()}`}
+  />
+) : field.type === 'date' ? (
+  <Input
+    id={field.id}
+    type="date"
+    value={formData[field.id] || ''}
+    onChange={(e) => handleInputChange(field.id, e.target.value)}
+    required={field.required}
+  />
+) : field.type === 'number' ? (
+  <Input
+    id={field.id}
+    type="number"
+    value={formData[field.id] || ''}
+    onChange={(e) => handleInputChange(field.id, e.target.value)}
+    required={field.required}
+    placeholder={`Enter ${field.label.toLowerCase()}`}
+  />
+) : field.type === 'boolean' ? (
+  <div className="flex items-center space-x-3 pt-2">
+    <Switch
+      id={field.id}
+      checked={formData[field.id] === 'true'}
+      onCheckedChange={(checked) =>
+        handleInputChange(field.id, checked ? 'true' : 'false')
+      }
+    />
+    <Label htmlFor={field.id} className="text-sm text-muted-foreground">
+      {formData[field.id] === 'true' ? 'Yes' : 'No'}
+    </Label>
+  </div>
+) : field.type === 'file' ? (
+  <Input
+    id={field.id}
+    type="file"
+    required={field.required}
+    onChange={(e) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        handleInputChange(field.id, file.name);
+      }
+    }}
+  />
+) : (
+  <Input
+    id={field.id}
+    type="text"
+    value={formData[field.id] || ''}
+    onChange={(e) => handleInputChange(field.id, e.target.value)}
+    required={field.required}
+    placeholder={`Enter ${field.label.toLowerCase()}`}
+  />
+)}
+
                   </motion.div>
                 ))}
 
