@@ -38,7 +38,9 @@ interface Form {
   created_at: string;
 
   sender_name?: string;      // 🔥 ADD THIS
-  sender_email?: string;     // 🔥 ADD THIS
+  sender_email?: string; 
+  receiver_name?: string;
+  receiver_email?: string;    // 🔥 ADD THIS
 
   config: {
     fields: FormField[];
@@ -241,19 +243,24 @@ export function FormRow({ form, onRefresh, onPreview, onAssign, onViewResponses,
               </Badge>
                
                {/* SHARED BY (only if not creator) */}
-{form.sender_email &&
- user?.email &&
- form.sender_email !== user.email && (
+
+
+               {user?.email && (
   <div className="w-full mt-1">
-    <div
-      className="text-[11px] px-2 py-1 rounded-md
-                 bg-blue-50 text-blue-700
-                 border border-blue-200"
-    >
-      Shared by {form.sender_name} ({form.sender_email})
-    </div>
+    {form.sender_email && form.sender_email !== user.email && (
+      <div className="text-[11px] px-2 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
+        Sent by {form.sender_name} ({form.sender_email})
+      </div>
+    )}
+
+    {form.receiver_email && form.sender_email === user.email && (
+      <div className="text-[11px] px-2 py-1 rounded-md bg-green-50 text-green-700 border border-green-200">
+        Sent to {form.receiver_name} ({form.receiver_email})
+      </div>
+    )}
   </div>
 )}
+
 
 
               {stats.totalAssigned > 0 && (

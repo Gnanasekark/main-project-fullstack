@@ -30,6 +30,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 
+
 router.get("/", async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
@@ -43,14 +44,28 @@ router.get("/", async (req, res) => {
     const userId = decoded.id;
 
     const query = `
-      SELECT DISTINCT f.*, u.full_name AS sender_name, u.email AS sender_email
-      FROM forms f
-      LEFT JOIN form_permissions fp ON f.id = fp.form_id
-      LEFT JOIN users u ON f.created_by = u.id
-      WHERE 
-        f.created_by = ?
-        OR fp.user_id = ?
-      ORDER BY f.created_at DESC
+     SELECT 
+  f.*,
+  sender.full_name AS sender_name,
+  sender.email AS sender_email,
+  GROUP_CONCAT(DISTINCT receiver.full_name) AS receiver_name,
+  GROUP_CONCAT(DISTINCT receiver.email) AS receiver_email
+FROM forms f
+LEFT JOIN users sender 
+  ON f.created_by = sender.id
+LEFT JOIN form_permissions fp 
+  ON f.id = fp.form_id
+LEFT JOIN users receiver 
+  ON fp.user_id = receiver.id
+WHERE 
+  f.created_by = ?
+  OR EXISTS (
+      SELECT 1 FROM form_permissions fp2 
+      WHERE fp2.form_id = f.id 
+      AND fp2.user_id = ?
+  )
+GROUP BY f.id
+ORDER BY f.created_at DESC
     `;
 
     db.query(query, [userId, userId], (err, rows) => {
@@ -451,7 +466,16 @@ router.post("/:id/submit", upload.any(), (req, res) => {
           console.error(err);
           return res.status(500).json({ message: "Submission failed" });
         }
-
+       
+          // 🔥 ADD THIS
+    db.query(
+      `
+      UPDATE notifications
+      SET status = 'completed'
+      WHERE related_form_id = ? AND user_id = ?
+      `,
+      [formId, userId]
+    );
         res.json({ message: "Submitted successfully" });
       }
     );
@@ -462,55 +486,69 @@ router.post("/:id/submit", upload.any(), (req, res) => {
 });
 
 /* REMIND ALL STUDENTS */
-router.post("/:id/remind-all", async (req, res) => {
+router.post("/:id/remind-all", (req, res) => {
   const formId = req.params.id;
   const { channel } = req.body;
 
-  try {
-    // Get all pending students
-    const query = `
-     SELECT fa.assigned_to_user_id
-      FROM form_assignments fa
-      LEFT JOIN form_submissions fs 
-        ON fa.form_id = fs.form_id 
-        AND fa.assigned_to_user_id = fs.user_id
-      WHERE fa.form_id = ? 
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ message: "No token" });
+  }
+
+  const token = authHeader.split(" ")[1];
+  const decoded = jwt.verify(token, JWT_SECRET);
+  const createdBy = decoded.id;   // 🔥 who sends reminder
+
+  const query = `
+    SELECT DISTINCT u.id AS user_id
+    FROM form_assignments fa
+    LEFT JOIN group_memberships gm
+      ON fa.assigned_to_group_id = gm.group_id
+    LEFT JOIN users u
+      ON u.id = COALESCE(fa.assigned_to_user_id, gm.user_id)
+    LEFT JOIN form_submissions fs
+      ON fs.form_id = fa.form_id
+      AND fs.user_id = u.id
+    WHERE fa.form_id = ?
       AND fs.id IS NULL
+  `;
+
+  db.query(query, [formId], (err, students) => {
+    if (err) {
+      console.error("SELECT ERROR:", err);
+      return res.status(500).json({ message: "DB error" });
+    }
+
+    if (students.length === 0) {
+      return res.json({ message: "No pending students" });
+    }
+
+    const values = students.map(s => [
+      s.user_id,
+      createdBy,                      // ✅ ADD THIS
+      "Form Reminder",
+      "Please complete your assigned form.",
+      channel || "both",
+      formId,
+      "sent",
+      new Date(),
+    ]);
+
+    const insertQuery = `
+      INSERT INTO notifications
+      (user_id, created_by, title, message, channel, related_form_id, status, sent_at)
+      VALUES ?
     `;
 
-    db.query(query, [formId], (err, students) => {
-      if (err) return res.status(500).json({ message: "DB error" });
-
-      if (students.length === 0) {
-        return res.json({ message: "No pending students" });
+    db.query(insertQuery, [values], (err2) => {
+      if (err2) {
+        console.error("INSERT ERROR:", err2);
+        return res.status(500).json({ message: err2.sqlMessage });
       }
 
-      const values = students.map(s => [
-        s.assigned_to_user_id,
-        "Form Reminder",
-        "Please complete your assigned form.",
-        channel || "both",
-        formId,
-        "sent",
-        new Date(),
-      ]);
-
-      const insertQuery = `
-        INSERT INTO notifications
-        (user_id, title, message, channel, related_form_id, status, sent_at)
-        VALUES ?
-      `;
-
-      db.query(insertQuery, [values], (err2) => {
-        if (err2) return res.status(500).json({ message: "Insert error" });
-
-        res.json({ message: "Reminders sent successfully" });
-      });
+      res.json({ message: "Reminders sent successfully" });
     });
-
-  } catch (error) {
-    res.status(500).json({ message: "Server error" });
-  }
+  });
 });
 
 export default router; 

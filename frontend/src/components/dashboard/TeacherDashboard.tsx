@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
-
+import NotificationBell from "./teacher/notifications/NotificationBell";
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -238,6 +238,9 @@ const res = await fetch(
     );
   }
 
+  <div className="flex items-center gap-4">
+  <NotificationBell />
+</div>
   // If showing forms only
   if (showFormsOnly) {
     return (

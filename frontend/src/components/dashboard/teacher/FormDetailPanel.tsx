@@ -252,8 +252,12 @@ import { FormResponsesDialog } from './FormResponsesDialog';
   };
   
 
+  
+
+
+
   const handleRemindAll = async () => {
-    if (!form || !user || pendingStudents.length === 0) return;
+    if (!form || pendingStudents.length === 0) return;
   
     setSendingReminder("all");
   
@@ -265,7 +269,7 @@ import { FormResponsesDialog } from './FormResponsesDialog';
       }
   
       const res = await fetch(
-        "http://localhost:5000/api/notifications/bulk",
+        `http://localhost:5000/api/forms/${form.id}/remind-all`,
         {
           method: "POST",
           headers: {
@@ -273,21 +277,18 @@ import { FormResponsesDialog } from './FormResponsesDialog';
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
-            user_ids: pendingStudents.map((s) => s.id), // ✅ correct
-            form_id: form.id,
-            title: `Reminder: ${form.title}`,
-            message: `Please complete the form "${form.title}" at your earliest convenience.`,
-            channel: "both",
+            channel: "both"
           }),
         }
       );
   
-      if (!res.ok) throw new Error("Bulk reminder failed");
+      if (!res.ok) {
+        const text = await res.text();
+        console.log("Backend error:", text);
+        throw new Error("Bulk reminder failed");
+      }
   
-      toast.success(
-        `Reminder sent to ${pendingStudents.length} student(s)`
-      );
-  
+      toast.success(`Reminder sent to ${pendingStudents.length} student(s)`);
     } catch (error) {
       console.error("Error sending reminders:", error);
       toast.error("Failed to send reminders");
@@ -295,7 +296,10 @@ import { FormResponsesDialog } from './FormResponsesDialog';
       setSendingReminder(null);
     }
   };
-  
+
+
+
+
   
   const pendingStudents = students.filter(s => !s.submitted);
   const submittedStudents = students.filter(s => s.submitted);

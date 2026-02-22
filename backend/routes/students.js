@@ -3,6 +3,23 @@ import db from "../config/db.js";
 
 const router = express.Router();
 
+
+// ✅ GET ALL STUDENTS (FIXED LOCATION)
+router.get("/", (req, res) => {
+  db.query(
+    `SELECT u.id, u.full_name, u.email
+     FROM users u
+     JOIN students s ON s.user_id = u.id`,
+    (err, results) => {
+      if (err) return res.status(500).json(err);
+      res.json(results);
+    }
+  );
+});
+
+
+
+
 router.get("/:userId/assigned-forms", (req, res) => {
   const userId = req.params.userId;
 
@@ -91,6 +108,9 @@ query += `)`;
                 sender_email: a.sender_email,
               };
             });
+
+
+          
 
             // Remove duplicate forms
             const unique = [];

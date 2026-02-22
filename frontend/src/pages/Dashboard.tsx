@@ -5,7 +5,8 @@ import { StudentDashboard } from '@/components/dashboard/StudentDashboard';
 import { TeacherDashboard } from '@/components/dashboard/TeacherDashboard';
 import  AdminDashboard  from '@/components/dashboard/AdminDashboard';
 import { GroupManagement } from '@/components/dashboard/teacher/GroupManagement';
-import { NotificationsPage } from '@/components/dashboard/teacher/NotificationsPage';
+
+import { NotificationsPage } from '@/components/dashboard/teacher/notifications/NotificationsPage';
 
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { StudentCircularsView } from '@/components/dashboard/StudentCircularsView';
@@ -38,7 +39,9 @@ export default function Dashboard() {
     const path = location.pathname;
 
     // Handle specific sub-routes
+    
     if (path === '/dashboard/groups') {
+      
       // Only teachers and admins can access groups
       if (role === 'teacher' || role === 'admin') {
         return <GroupManagement />;
@@ -85,6 +88,8 @@ export default function Dashboard() {
         return <StudentDashboard />;
     }
   };
+
+  
 
   return (
     <DashboardLayout>

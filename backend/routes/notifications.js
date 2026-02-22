@@ -1,38 +1,175 @@
 import express from "express";
 import db from "../config/db.js";
 import jwt from "jsonwebtoken";
+import { sendEmail } from "../services/emailService.js";
+import { sendWhatsApp } from "../services/whatsappService.js";
+import { exportToCSV } from "../utils/exportCSV.js";
+import verifyToken from "../middleware/verifyToken.js";
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "secret123";
 
-/* ========================= */
-/* GET SENT BY CURRENT USER  */
-/* ========================= */
-router.get("/", (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ message: "No token" });
 
+             /* View button */
+             router.get("/:id/details", verifyToken, async (req, res) => {
+              try {
+                const notificationId = req.params.id;
+            
+                const [rows] = await db.promise().query(`
+                  SELECT 
+                    u.full_name,
+                    u.reg_no,
+                    n.is_read,
+                    n.read_at
+                  FROM notifications n
+                  JOIN users u ON u.id = n.user_id
+                  WHERE n.id = ?
+                `, [notificationId]);
+            
+                const total = rows.length;
+                const readStudents = rows.filter(r => r.is_read === 1);
+                const unreadStudents = rows.filter(r => r.is_read === 0);
+            
+                res.json({
+                  total,
+                  read: readStudents.length,
+                  unread: unreadStudents.length,
+                  successRate: total > 0 ? Math.round((readStudents.length / total) * 100) : 0,
+                  allStudents: rows,
+                  readStudents,
+                  unreadStudents,
+                  reminderType: "email+whatsapp"
+                });
+            
+              } catch (err) {
+                console.error(err);
+                res.status(500).json({ message: "Details error" });
+              }
+            });
+
+            
+             /* Notifications  */
+             router.get("/", verifyToken, (req, res) => {
+              const teacherId = req.user.id;
+            
+              const query = `
+                SELECT n1.*
+                FROM notifications n1
+                INNER JOIN (
+                    SELECT 
+                        MAX(id) as id
+                    FROM notifications
+                    WHERE created_by = ?
+                    GROUP BY related_form_id, title
+                ) n2 ON n1.id = n2.id
+                ORDER BY n1.created_at DESC
+              `;
+            
+              db.query(query, [teacherId], (err, rows) => {
+                if (err) {
+                  console.error(err);
+                  return res.status(500).json({ message: "DB error" });
+                }
+            
+                res.json(rows);
+              });
+            });
+
+            /* Notifications export csv  */
+
+router.get("/export", async (req, res) => {
+  const [rows] = await db.promise().query("SELECT * FROM students");
+  exportToCSV(rows, res);
+});
+
+
+          /* Notifications  */
+
+router.post("/send", async (req, res) => {
   try {
-    const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const userId = decoded.id;
+    const { title, message, channel } = req.body;
 
-    db.query(
-      `SELECT * FROM notifications 
-       WHERE created_by = ? 
-       ORDER BY created_at DESC`,
-      [userId],
-      (err, rows) => {
-        if (err) return res.status(500).json({ message: "DB error" });
-        res.json(rows);
-      }
+    // 1️⃣ Get students from database
+    const [students] = await db.promise().query("SELECT * FROM students");
+
+    // 2️⃣ Insert notification record first
+    const [result] = await db.promise().query(
+      "INSERT INTO notifications (title, message) VALUES (?, ?)",
+      [title, message]
     );
-  } catch {
-    res.status(401).json({ message: "Invalid token" });
+
+    const notificationId = result.insertId;
+
+    // 3️⃣ Loop students
+    for (let student of students) {
+
+      if (channel.includes("Email")) {
+        await sendEmail(student.email, title, message);
+      }
+
+      if (channel.includes("WhatsApp")) {
+        await sendWhatsApp(student.phone, message);
+      }
+
+      await db.query(
+        "INSERT INTO notification_delivery (notification_id, student_id, sent_at) VALUES (?, ?, NOW())",
+        [notificationId, student.id]
+      );
+    }
+
+    res.json({ message: "Notifications sent successfully" });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
 
+
+          /* Notifications  */
+          router.get("/my", verifyToken, (req, res) => {
+            const userId = req.user.id;
+          
+            db.query(
+              `
+              SELECT 
+                n.*,
+                u.full_name AS sender_name,
+                u.email AS sender_email
+              FROM notifications n
+              JOIN users u ON u.id = n.created_by
+              WHERE n.user_id = ?
+              ORDER BY n.created_at DESC
+              `,
+              [userId],
+              (err, rows) => {
+                if (err) {
+                  console.error("MY NOTIFICATIONS ERROR:", err);
+                  return res.status(500).json({ message: "DB error" });
+                }
+          
+                res.json(rows);
+              }
+            );
+          });
+/* ========================= */
+          /* Mark     */
+/* ========================= */
+
+router.put("/read/:id", verifyToken, (req, res) => {
+  const notificationId = req.params.id;
+  const userId = req.user.id;
+
+  db.query(
+    "UPDATE notifications SET is_read = 1, read_at = NOW() WHERE id = ? AND user_id = ?",
+    [notificationId, userId],
+    (err) => {
+      if (err) return res.status(500).json({ message: "DB error" });
+      res.json({ message: "Marked as read" });
+    }
+  );
+});
 /* ========================= */
 /* GET USER NOTIFICATIONS    */
 /* ========================= */
@@ -61,7 +198,7 @@ router.get("/user/:id", (req, res) => {
 /* ========================= */
 /* BULK REMINDER (FIXED)     */
 /* ========================= */
-router.post("/bulk", (req, res) => {
+router.post("/bulk", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ message: "No token" });
 
@@ -70,17 +207,22 @@ router.post("/bulk", (req, res) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     const senderId = decoded.id;
 
-    const { user_ids, title, message, form_id } = req.body;
+    const { user_ids, title, message, form_id, channel } = req.body;
 
     if (!user_ids || user_ids.length === 0) {
       return res.status(400).json({ message: "No recipients selected" });
     }
 
+    const finalChannel =
+      channel === "both"
+        ? "both"
+        : channel || "email";
+
     const values = user_ids.map(id => [
       id,
       title,
       message,
-      "both",
+      finalChannel,
       form_id || null,
       "sent",
       senderId,
@@ -93,16 +235,45 @@ router.post("/bulk", (req, res) => {
       VALUES ?
     `;
 
-    db.query(sql, [values], (err) => {
+    db.query(sql, [values], async (err) => {
       if (err) {
         console.error(err);
         return res.status(500).json({ message: "DB error" });
       }
 
-      res.json({ message: "Bulk notifications sent" });
+      // 🔥 SEND EMAIL / WHATSAPP
+      for (let uid of user_ids) {
+        const [student] = await db.promise().query(
+          "SELECT email, mobile FROM users WHERE id = ?",
+          [uid]
+        );
+        if (student.length > 0) {
+          if (finalChannel.includes("email")) {
+            await sendEmail(student[0].email, title, message);
+          }
+
+          if (finalChannel.includes("whatsapp")) {
+            await sendWhatsApp(student[0].mobile, message);
+          }
+        }
+      }
+
+      // 🔥 REAL-TIME EVENTS
+
+      // 1️⃣ Student Toast + Dashboard
+      global.io.emit("newNotification", {
+        title,
+        message,
+      });
+
+      // 2️⃣ Teacher Analytics Live Update
+      global.io.emit("analyticsUpdated");
+
+      res.json({ message: "Bulk notifications sent successfully" });
     });
 
-  } catch {
+  } catch (error) {
+    console.error(error);
     res.status(401).json({ message: "Invalid token" });
   }
 });
@@ -149,20 +320,37 @@ router.post("/", (req, res) => {
 });
 
 
-/* ========================= */
-/* MARK READ                 */
-/* ========================= */
-router.put("/read/:id", (req, res) => {
-  db.query(
-    "UPDATE notifications SET is_read = true WHERE id = ?",
-    [req.params.id],
-    (err) => {
-      if (err) return res.status(500).json({ message: "DB error" });
-      res.json({ message: "Marked as read" });
-    }
-  );
-});
-
+              /* remainder history */ 
+              router.get("/reminder-history", (req, res) => {
+                const query = `
+                  SELECT 
+                    n.related_form_id,
+                    f.title AS form_title,
+                    n.title,
+                    COUNT(*) AS total_students,
+                    SUM(n.is_read = 1) AS read_count,
+                    SUM(n.is_read = 0 OR n.is_read IS NULL) AS unread_count,
+                    ROUND(
+                      (SUM(n.is_read = 1) / COUNT(*)) * 100
+                    ) AS success_rate,
+                    MAX(n.created_at) AS created_at
+                  FROM notifications n
+                  LEFT JOIN forms f 
+                    ON f.id = n.related_form_id
+                  WHERE n.related_form_id IS NOT NULL
+                  GROUP BY n.related_form_id, n.title
+                  ORDER BY created_at DESC
+                `;
+              
+                db.query(query, (err, rows) => {
+                  if (err) {
+                    console.error("REMINDER HISTORY ERROR:", err);
+                    return res.status(500).json({ message: "Server error" });
+                  }
+              
+                  res.json(rows);
+                });
+              });
 
 /* ========================= */
 /* STATS BY FORM             */
