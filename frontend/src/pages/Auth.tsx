@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { z } from 'zod';
 import { useAuth } from '@/hooks/useAuth';
@@ -7,6 +7,8 @@ import { Logo } from '@/components/ui/Logo';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+
+
 import { 
   Select, 
   SelectContent, 
@@ -41,6 +43,7 @@ export default function Auth() {
   const [searchParams] = useSearchParams();
   const mode = searchParams.get('mode') || 'login';
   const navigate = useNavigate();
+  const location = useLocation();
   const { signIn, signUp, user, isLoading: authLoading } = useAuth();
 
   const [activeTab, setActiveTab] = useState(mode);
@@ -48,11 +51,16 @@ export default function Auth() {
   const [showLoginPassword, setShowLoginPassword] = useState(false);
 const [showSignupPassword, setShowSignupPassword] = useState(false);
 
+const params = new URLSearchParams(location.search);
+const redirectPath = params.get("redirect");
+
+
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
 
+ 
   // Signup form state
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
@@ -66,10 +74,14 @@ const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [section, setSection] = useState('');
 
   useEffect(() => {
-    if (user && !authLoading) {
-      navigate('/dashboard');
+    if (!authLoading && user) {
+      if (redirectPath) {
+        navigate(redirectPath);
+      } else {
+        navigate('/dashboard');
+      }
     }
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading, navigate, redirectPath]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

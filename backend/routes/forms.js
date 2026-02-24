@@ -1,7 +1,7 @@
 import express from "express";
 import db from "../config/db.js";
 import jwt from "jsonwebtoken";
-
+import { sendEmail } from "../services/emailService.js";
 
 import multer from "multer";
 import path from "path";
@@ -486,69 +486,71 @@ router.post("/:id/submit", upload.any(), (req, res) => {
 });
 
 /* REMIND ALL STUDENTS */
-router.post("/:id/remind-all", (req, res) => {
-  const formId = req.params.id;
-  const { channel } = req.body;
+router.post("/:id/remind-all", async (req, res) => {
+  try {
+    const formId = req.params.id;
+    const authHeader = req.headers.authorization;
 
-  const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    return res.status(401).json({ message: "No token" });
+    if (!authHeader) {
+      return res.status(401).json({ message: "No token" });
+    }
+
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const senderId = decoded.id;
+
+    // 🔹 Get teacher info
+    const [teacher] = await db.promise().query(
+      "SELECT email, full_name FROM users WHERE id = ?",
+      [senderId]
+    );
+
+    const teacherEmail = teacher[0].email;
+    const teacherName = teacher[0].full_name;
+
+    // 🔹 Get form title
+    const [form] = await db.promise().query(
+      "SELECT title FROM forms WHERE id = ?",
+      [formId]
+    );
+
+    const formTitle = form.length > 0 ? form[0].title : "New Form";
+
+    // 🔹 Get pending students
+    const [students] = await db.promise().query(`
+      SELECT u.id, u.email, u.mobile, u.full_name, u.reg_no
+      FROM form_assignments fa
+      LEFT JOIN form_submissions fs
+        ON fs.form_id = fa.form_id
+        AND fs.user_id = fa.assigned_to_user_id
+      JOIN users u ON u.id = fa.assigned_to_user_id
+      WHERE fa.form_id = ?
+        AND fs.id IS NULL
+    `, [formId]);
+
+    for (let student of students) {
+
+      const formLink = `http://localhost:8080/student/form/${formId}`;
+
+      await sendEmail(
+        student.email,
+        student.full_name,
+        student.reg_no,
+        formTitle,
+        formLink,
+        teacherEmail,
+        teacherName
+      );
+
+      await sendWhatsApp(student.mobile, `Reminder: ${formTitle}`);
+    }
+
+    res.json({ message: "Reminders sent successfully" });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Reminder failed" });
   }
-
-  const token = authHeader.split(" ")[1];
-  const decoded = jwt.verify(token, JWT_SECRET);
-  const createdBy = decoded.id;   // 🔥 who sends reminder
-
-  const query = `
-    SELECT DISTINCT u.id AS user_id
-    FROM form_assignments fa
-    LEFT JOIN group_memberships gm
-      ON fa.assigned_to_group_id = gm.group_id
-    LEFT JOIN users u
-      ON u.id = COALESCE(fa.assigned_to_user_id, gm.user_id)
-    LEFT JOIN form_submissions fs
-      ON fs.form_id = fa.form_id
-      AND fs.user_id = u.id
-    WHERE fa.form_id = ?
-      AND fs.id IS NULL
-  `;
-
-  db.query(query, [formId], (err, students) => {
-    if (err) {
-      console.error("SELECT ERROR:", err);
-      return res.status(500).json({ message: "DB error" });
-    }
-
-    if (students.length === 0) {
-      return res.json({ message: "No pending students" });
-    }
-
-    const values = students.map(s => [
-      s.user_id,
-      createdBy,                      // ✅ ADD THIS
-      "Form Reminder",
-      "Please complete your assigned form.",
-      channel || "both",
-      formId,
-      "sent",
-      new Date(),
-    ]);
-
-    const insertQuery = `
-      INSERT INTO notifications
-      (user_id, created_by, title, message, channel, related_form_id, status, sent_at)
-      VALUES ?
-    `;
-
-    db.query(insertQuery, [values], (err2) => {
-      if (err2) {
-        console.error("INSERT ERROR:", err2);
-        return res.status(500).json({ message: err2.sqlMessage });
-      }
-
-      res.json({ message: "Reminders sent successfully" });
-    });
-  });
 });
 
 export default router; 

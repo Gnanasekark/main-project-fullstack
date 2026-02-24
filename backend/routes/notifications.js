@@ -2,9 +2,10 @@ import express from "express";
 import db from "../config/db.js";
 import jwt from "jsonwebtoken";
 import { sendEmail } from "../services/emailService.js";
-import { sendWhatsApp } from "../services/whatsappService.js";
+
 import { exportToCSV } from "../utils/exportCSV.js";
 import verifyToken from "../middleware/verifyToken.js";
+import sendWhatsAppMessage from "../services/whatsappService.js";
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "secret123";
@@ -207,77 +208,90 @@ router.post("/bulk", async (req, res) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     const senderId = decoded.id;
 
-    const { user_ids, title, message, form_id, channel } = req.body;
+    const { user_ids, form_id, channel } = req.body;
 
     if (!user_ids || user_ids.length === 0) {
       return res.status(400).json({ message: "No recipients selected" });
     }
 
-    const finalChannel =
-      channel === "both"
-        ? "both"
-        : channel || "email";
+    // ✅ GET TEACHER DETAILS
+    const [teacherRows] = await db.promise().query(
+      "SELECT email, full_name FROM users WHERE id = ?",
+      [senderId]
+    );
 
-    const values = user_ids.map(id => [
-      id,
-      title,
-      message,
-      finalChannel,
-      form_id || null,
-      "sent",
-      senderId,
-      new Date()
-    ]);
+    const teacherEmail = teacherRows[0].email;
+    const teacherName = teacherRows[0].full_name;
 
-    const sql = `
-      INSERT INTO notifications
-      (user_id, title, message, channel, related_form_id, status, created_by, created_at)
-      VALUES ?
-    `;
+    // ✅ GET FORM TITLE
+    const [formRows] = await db.promise().query(
+      "SELECT title FROM forms WHERE id = ?",
+      [form_id]
+    );
 
-    db.query(sql, [values], async (err) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).json({ message: "DB error" });
+    const formTitle = formRows.length > 0 ? formRows[0].title : "New Form";
+
+    for (let uid of user_ids) {
+
+      // ✅ GET STUDENT DETAILS
+      const [studentRows] = await db.promise().query(
+        "SELECT email, mobile, full_name, reg_no FROM users WHERE id = ?",
+        [uid]
+      );
+
+      if (studentRows.length === 0) continue;
+
+      const student = studentRows[0];
+
+      const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:8080";
+      const formLink = `${FRONTEND_URL}/student/form/${form_id}`;
+
+      if (channel === "email" || channel === "both") {
+        await sendEmail(
+          student.email,
+          student.full_name,
+          student.reg_no,
+          formTitle,
+          formLink,
+          teacherEmail,
+          teacherName
+        );
       }
 
-      // 🔥 SEND EMAIL / WHATSAPP
-      for (let uid of user_ids) {
-        const [student] = await db.promise().query(
-          "SELECT email, mobile FROM users WHERE id = ?",
-          [uid]
-        );
-        if (student.length > 0) {
-          if (finalChannel.includes("email")) {
-            await sendEmail(student[0].email, title, message);
-          }
-
-          if (finalChannel.includes("whatsapp")) {
-            await sendWhatsApp(student[0].mobile, message);
-          }
+      if (channel === "whatsapp" || channel === "both") {
+        try {
+          await sendWhatsAppMessage(
+            student.mobile,
+            `Please complete form: ${formTitle}`
+          );
+        } catch (waError) {
+          console.error("WhatsApp failed but continuing:", waError.message);
         }
       }
 
-      // 🔥 REAL-TIME EVENTS
+      await db.promise().query(
+        `INSERT INTO notifications 
+        (user_id, title, message, channel, related_form_id, status, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          uid,
+          `Form Assigned`,
+          `You have been assigned ${formTitle}`,
+          channel,
+          form_id,
+          "sent",
+          senderId
+        ]
+      );
+    }
 
-      // 1️⃣ Student Toast + Dashboard
-      global.io.emit("newNotification", {
-        title,
-        message,
-      });
+    res.json({ message: "Bulk notifications sent successfully" });
 
-      // 2️⃣ Teacher Analytics Live Update
-      global.io.emit("analyticsUpdated");
-
-      res.json({ message: "Bulk notifications sent successfully" });
-    });
-
-  } catch (error) {
-    console.error(error);
-    res.status(401).json({ message: "Invalid token" });
+  }catch (error) {
+    console.error("Bulk notification error:", error);
+    res.status(500).json({ message: "Failed to send notification" });
   }
 });
-
 
 /* ========================= */
 /* SEND SINGLE / CUSTOM      */

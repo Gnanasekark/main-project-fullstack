@@ -225,14 +225,15 @@ import { FormResponsesDialog } from './FormResponsesDialog';
     setSendingReminder(student.id);
   
     try {
-      const res = await fetch("http://localhost:5000/api/notifications", {
+      const res = await fetch("http://localhost:5000/api/notifications/bulk", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("token")}`, // 🔥 REQUIRED
         },
         body: JSON.stringify({
-          user_ids: [student.id],              // ✅ must be array
+          user_ids: [student.id], 
+          form_id: form.id,   // ✅ VERY IMPORTANT             // ✅ must be array
           title: `Reminder: ${form.title}`,
           message: `Please complete the form "${form.title}" at your earliest convenience.`,
           channel: "both",
@@ -277,6 +278,8 @@ import { FormResponsesDialog } from './FormResponsesDialog';
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
+            user_ids: pendingStudents.map(s => s.id),
+            form_id: form.id,
             channel: "both"
           }),
         }
@@ -300,7 +303,7 @@ import { FormResponsesDialog } from './FormResponsesDialog';
 
 
 
-  
+
   const pendingStudents = students.filter(s => !s.submitted);
   const submittedStudents = students.filter(s => s.submitted);
   const completionRate = students.length > 0 ? (submittedStudents.length / students.length) * 100 : 0;

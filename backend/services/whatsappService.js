@@ -1,14 +1,28 @@
-import twilio from "twilio";
+import axios from "axios";
 
-const client = twilio(
-  process.env.TWILIO_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
+const sendWhatsAppMessage = async (to, message) => {
+  try {
+    const response = await axios.post(
+      `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to: to,
+        type: "text",
+        text: { body: message }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
 
-export const sendWhatsApp = async (to, message) => {
-  await client.messages.create({
-    from: "whatsapp:+14155238886", // Twilio sandbox
-    to: `whatsapp:${to}`,
-    body: message
-  });
+    return response.data;
+  } catch (error) {
+    console.error("WhatsApp Error:", error.response?.data || error.message);
+    throw error;
+  }
 };
+
+export default sendWhatsAppMessage;

@@ -45,6 +45,12 @@ export default function FormSubmission() {
     }
   }, [formId]);
 
+  useEffect(() => {
+    if (!user) {
+      navigate(`/auth?redirect=/student/form/${formId}`);
+    }
+  }, [user, formId]);
+
   const fetchForm = async () => {
     try {
       const res = await fetch(`http://localhost:5000/api/forms/${formId}`);

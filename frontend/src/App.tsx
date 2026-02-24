@@ -29,6 +29,7 @@ const App = () => (
 }}>
 
         <AuthProvider>
+    
         <Routes>
   <Route path="/" element={<Index />} />
   <Route path="/auth" element={<Auth />} />
@@ -38,8 +39,8 @@ const App = () => (
   <Route path="/student" element={<StudentDashboard />} />
   <Route path="/teacher" element={<TeacherDashboard />} />
   <Route path="/admin" element={<AdminDashboard />} />
-
   <Route path="/form/:formId" element={<FormSubmission />} />
+  <Route path="/student/form/:formId" element={<FormSubmission />} />
 
   <Route path="*" element={<NotFound />} />
 </Routes>

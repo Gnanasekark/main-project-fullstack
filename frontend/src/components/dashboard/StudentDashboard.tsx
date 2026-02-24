@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -36,6 +36,8 @@ export function StudentDashboard({ showFormsOnly = false }: StudentDashboardProp
   const { profile, user, loading } = useAuth();
   
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+const highlightId = searchParams.get("highlight");
   const [forms, setForms] = useState<FormWithAssignment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -168,13 +170,14 @@ export function StudentDashboard({ showFormsOnly = false }: StudentDashboardProp
               </div>
             ) : (
               <div className="space-y-4">
-                {pendingForms.map((form) => (
-                  <FormCard 
-                    key={form.id} 
-                    form={form} 
-                    onFill={() => navigate(`/form/${form.form_id}`)}
-                  />
-                ))}
+               {pendingForms.map((form) => (
+              <FormCard 
+                key={form.id}
+                form={form}
+                highlight={form.form_id.toString() === highlightId}
+                onFill={() => navigate(`/form/${form.form_id}`)}
+              />
+            ))}
               </div>
             )}
           </CardContent>
@@ -287,11 +290,27 @@ function StatCard({
   );
 }
 
-function FormCard({ form, onFill }: { form: FormWithAssignment; onFill: () => void }) {
+function FormCard({ 
+  form, 
+  onFill,
+  highlight 
+}: { 
+  form: FormWithAssignment; 
+  onFill: () => void;
+  highlight?: boolean;
+}) {
   const isOverdue = form.due_date && new Date(form.due_date) < new Date();
 
   return (
-    <div className="flex items-center justify-between p-4 rounded-xl border border-border hover:border-primary/50 transition-colors">
+    <div
+  id={`form-${form.form_id}`}
+  className={`flex items-center justify-between p-4 rounded-xl border transition-all
+    ${highlight 
+      ? 'border-primary ring-2 ring-primary shadow-lg bg-primary/5' 
+      : 'border-border hover:border-primary/50'
+    }
+  `}
+>
       <div className="flex items-center gap-4">
         <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
           isOverdue ? 'bg-destructive/10' : 'bg-primary/10'
