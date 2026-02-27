@@ -109,6 +109,35 @@ const redirectPath = params.get("redirect");
     }
   };
 
+
+
+  const handleRegNoChange = async (value: string) => {
+    setRegNo(value);
+  
+    if (!value) return;
+  
+    try {
+      const res = await fetch(
+        `http://localhost:5000/api/students/prefill/${value}`
+      );
+  
+      if (!res.ok) return;
+  
+      const data = await res.json();
+  
+      setFullName(data.full_name || '');
+      setSignupEmail(data.email || '');
+      setMobileNumber(data.mobile || '');
+      setDegree(data.degree || '');
+      setBranch(data.branch || '');
+      setYear(data.year || '');
+      setSection(data.section || '');
+  
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -301,6 +330,7 @@ const redirectPath = params.get("redirect");
                       required
                     />
                   </div>
+                 
 
                   <div className="space-y-2 col-span-2">
   <Label htmlFor="signup-password">Password</Label>
@@ -357,13 +387,13 @@ const redirectPath = params.get("redirect");
                       
                       <div className="space-y-4">
                         <div className="space-y-2">
-                          <Label htmlFor="reg-no">Registration Number</Label>
+                          <Label htmlFor="reg-no">Registration No</Label>
                           <Input
-                            id="reg-no"
-                            placeholder="2024CS001"
-                            value={regNo}
-                            onChange={(e) => setRegNo(e.target.value)}
-                          />
+  id="reg-no"
+  placeholder="2024CS001"
+  value={regNo}
+  onChange={(e) => handleRegNoChange(e.target.value)}
+/>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">

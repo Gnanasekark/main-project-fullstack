@@ -5,6 +5,17 @@ import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { toast } from 'sonner';
+
 import { 
   Users, 
   FileSpreadsheet, 
@@ -34,7 +45,11 @@ export default function AdminDashboard() {
   const { profile } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+const [uploadFile, setUploadFile] = useState<File | null>(null);
+const [isUploading, setIsUploading] = useState(false);
   const [stats, setStats] = useState({
+    
     totalUsers: 0,
     students: 0,
     teachers: 0,
@@ -119,6 +134,41 @@ export default function AdminDashboard() {
     unknown: 'bg-muted text-muted-foreground',
   };
 
+
+
+  const handleUploadStudents = async () => {
+    if (!uploadFile) {
+      toast.error("Please select an Excel file");
+      return;
+    }
+  
+    const formData = new FormData();
+    formData.append("file", uploadFile);
+  
+    try {
+      setIsUploading(true);
+  
+      const res = await fetch(
+        "http://localhost:5000/api/students/upload",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+  
+      if (!res.ok) throw new Error();
+  
+      toast.success("Students uploaded successfully");
+      setIsUploadOpen(false);
+      setUploadFile(null);
+    } catch (error) {
+      toast.error("Upload failed");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -136,10 +186,17 @@ export default function AdminDashboard() {
             Manage users, groups, and system settings.
           </p>
         </div>
-        <Button>
-          <Plus className="w-4 h-4 mr-2" />
-          Add User
-        </Button>
+        <div className="flex gap-2">
+  <Button onClick={() => setIsUploadOpen(true)}>
+    <FileSpreadsheet className="w-4 h-4 mr-2" />
+    Upload Students
+  </Button>
+
+  <Button>
+    <Plus className="w-4 h-4 mr-2" />
+    Add User
+  </Button>
+</div>
       </motion.div>
 
       {/* Stats cards */}
@@ -257,6 +314,38 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* Upload Students Dialog */}
+<Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Upload Students Excel</DialogTitle>
+    </DialogHeader>
+
+    <div className="py-4">
+      <Input
+        type="file"
+        accept=".xlsx,.xls"
+        onChange={(e) => {
+          if (e.target.files) setUploadFile(e.target.files[0]);
+        }}
+      />
+    </div>
+
+    <DialogFooter>
+      <Button variant="outline" onClick={() => setIsUploadOpen(false)}>
+        Cancel
+      </Button>
+
+      <Button onClick={handleUploadStudents} disabled={isUploading}>
+        {isUploading && (
+          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+        )}
+        Upload
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
     </div>
   );
 }

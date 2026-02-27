@@ -19,6 +19,7 @@ import formAssignmentsRoutes from "./routes/formAssignments.js";
 import notificationsRoutes from "./routes/notifications.js";
 import folderRoutes from "./routes/folders.js";
 import notificationAnalytics from "./routes/notificationAnalytics.js";
+import adminRoutes from "./routes/admin.js";
 
 
 dotenv.config();
@@ -63,6 +64,8 @@ app.use("/api/groups", groupRoutes);
 app.use("/api/form-assignments", formAssignmentsRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/folders", folderRoutes);
+
+app.use("/api/admin", adminRoutes);
 
 app.use("/api/notificationAnalytics", notificationAnalytics);
 

@@ -260,10 +260,7 @@ router.post("/bulk", async (req, res) => {
 
       if (channel === "whatsapp" || channel === "both") {
         try {
-          await sendWhatsAppMessage(
-            student.mobile,
-            `Please complete form: ${formTitle}`
-          );
+          await sendWhatsAppMessage(student.mobile);
         } catch (waError) {
           console.error("WhatsApp failed but continuing:", waError.message);
         }
@@ -290,6 +287,22 @@ router.post("/bulk", async (req, res) => {
   }catch (error) {
     console.error("Bulk notification error:", error);
     res.status(500).json({ message: "Failed to send notification" });
+  }
+});
+
+
+       /* Whatapp message      */
+
+router.post("/test-whatsapp", async (req, res) => {
+  try {
+    await sendWhatsAppMessage(
+      "91XXXXXXXXXX",   // your number without +
+      "Backend WhatsApp integration successful 🚀"
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false });
   }
 });
 

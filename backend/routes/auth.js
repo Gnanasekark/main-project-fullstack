@@ -14,32 +14,25 @@ router.post("/register", async (req, res) => {
     return res.status(400).json({ message: "All fields required" });
   }
 
-  // ✅ Gmail only validation
-if (!email.endsWith("@gmail.com")) {
-  return res.status(400).json({
-    message: "Only @gmail.com email addresses are allowed"
-  });
-}
+  if (!email.endsWith("@gmail.com")) {
+    return res.status(400).json({
+      message: "Only @gmail.com email addresses are allowed"
+    });
+  }
 
-// ✅ 10 digit mobile validation
-if (!/^\d{10}$/.test(userData.mobile_number)) {
-  return res.status(400).json({
-    message: "Mobile number must be exactly 10 digits"
-  });
-}
-
+  if (!/^\d{10}$/.test(userData.mobile_number)) {
+    return res.status(400).json({
+      message: "Mobile number must be exactly 10 digits"
+    });
+  }
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const sql = `
-      INSERT INTO users
+    const [result] = await db.promise().query(
+      `INSERT INTO users
       (full_name, email, password, role, mobile, reg_no, degree, branch, year, section)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-
-    db.query(
-      sql,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userData.full_name,
         email,
@@ -51,49 +44,36 @@ if (!/^\d{10}$/.test(userData.mobile_number)) {
         userData.branch || null,
         userData.year || null,
         userData.section || null,
-      ],
-      (err, result) => {
-        if (err) {
-          console.error(err);
-          return res.status(400).json({ message: "Email already exists" });
-        }
-
-        const userId = result.insertId;
-
-        // AUTO ADD STUDENT TO GROUP
-        if (role === "student") {
-          const findGroupSql = `
-            SELECT id FROM groups
-            WHERE degree = ?
-            AND branch = ?
-            AND year = ?
-            AND section = ?
-          `;
-
-          db.query(
-            findGroupSql,
-            [
-              userData.degree,
-              userData.branch,
-              userData.year,
-              userData.section,
-            ],
-            (err2, groups) => {
-              if (!err2 && groups.length > 0) {
-                const groupId = groups[0].id;
-
-                db.query(
-                  "INSERT INTO group_memberships (group_id, user_id) VALUES (?, ?)",
-                  [groupId, userId]
-                );
-              }
-            }
-          );
-        }
-
-        res.json({ message: "User registered successfully" });
-      }
+      ]
     );
+
+    const userId = result.insertId;
+
+    // ✅ AUTO GROUP ASSIGN (CORRECT PLACE)
+    if (role === "student") {
+      const [groups] = await db.promise().query(
+        `SELECT id FROM \`groups\`
+         WHERE degree = ?
+         AND branch = ?
+         AND year = ?
+         AND section = ?`,
+        [
+          userData.degree,
+          userData.branch,
+          userData.year,
+          userData.section
+        ]
+      );
+
+      for (const group of groups) {
+        await db.promise().query(
+          "INSERT INTO group_memberships (group_id, user_id) VALUES (?, ?)",
+          [group.id, userId]
+        );
+      }
+    }
+
+    res.json({ message: "User registered successfully" });
 
   } catch (error) {
     console.error(error);
@@ -112,6 +92,10 @@ router.get("/staff", async (req, res) => {
     res.status(500).json({ message: "Error fetching staff" });
   }
 });
+
+
+
+
 
 
 /* LOGIN */

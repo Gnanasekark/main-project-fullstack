@@ -18,7 +18,7 @@ export const sendEmail = async (
   teacherName
 ) => {
   const mailOptions = {
-    from: `"${teacherName}" <${teacherEmail}>`,
+    from: `"ACE Form Portal" <${process.env.EMAIL_USER}>`,
     to: studentEmail,
     subject: `Form Assigned: ${formTitle}`,
     html: `

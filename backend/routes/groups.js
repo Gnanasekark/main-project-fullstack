@@ -3,6 +3,7 @@ import db from "../config/db.js";
 
 const router = express.Router();
 
+
 /* ================= GET ALL GROUPS ================= */
 
 router.get("/", (req, res) => {
