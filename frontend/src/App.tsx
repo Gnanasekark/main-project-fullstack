@@ -7,8 +7,8 @@ import { AuthProvider } from "@/hooks/useAuth";
 import  { StudentDashboard } from "@/components/dashboard/StudentDashboard";
 import { TeacherDashboard } from "@/components/dashboard/TeacherDashboard";
 import  AdminDashboard  from "@/components/dashboard/AdminDashboard";
-
-
+import AdminStudents from "./pages/AdminStudents";
+import GroupStudents from "@/components/dashboard/GroupStudents";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
@@ -41,6 +41,12 @@ const App = () => (
   <Route path="/admin" element={<AdminDashboard />} />
   <Route path="/form/:formId" element={<FormSubmission />} />
   <Route path="/student/form/:formId" element={<FormSubmission />} />
+  <Route path="/dashboard/students-master" element={<AdminStudents />} />
+  <Route
+  path="/dashboard/groups/:id/students"
+  element={<GroupStudents />}
+/>
+
 
   <Route path="*" element={<NotFound />} />
 </Routes>

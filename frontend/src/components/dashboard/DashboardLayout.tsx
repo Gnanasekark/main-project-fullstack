@@ -73,9 +73,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       return [
         ...baseItems,
         { icon: Users, label: 'Users', href: '/dashboard/users' },
+        { icon: Users, label: 'Groups', href: '/dashboard/groups' },
         { icon: FileSpreadsheet, label: 'Forms', href: '/dashboard/forms' },
         { icon: FileText, label: 'Circulars', href: '/dashboard/circulars' },
-        { icon: Settings, label: 'Settings', href: '/dashboard/settings' },
       ];
     }
 
@@ -128,10 +128,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate('/dashboard/settings')}>
-                  <Settings className="mr-2 h-4 w-4" />
-                  Settings
-                </DropdownMenuItem>
+               
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
                   <LogOut className="mr-2 h-4 w-4" />

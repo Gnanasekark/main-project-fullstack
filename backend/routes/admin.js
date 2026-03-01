@@ -37,4 +37,19 @@ router.get("/dashboard", async (req, res) => {
   }
 });
 
+
+router.get("/students-master", async (req, res) => {
+  try {
+    const [rows] = await db.promise().query(
+      `SELECT id, full_name, email, mobile, reg_no, degree, branch, year, section
+       FROM students_master
+       ORDER BY reg_no ASC`
+    );
+
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching students master" });
+  }
+});
+
 export default router;

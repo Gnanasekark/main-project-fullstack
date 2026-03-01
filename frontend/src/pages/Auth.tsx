@@ -110,7 +110,6 @@ const redirectPath = params.get("redirect");
   };
 
 
-
   const handleRegNoChange = async (value: string) => {
     setRegNo(value);
   
@@ -121,20 +120,23 @@ const redirectPath = params.get("redirect");
         `http://localhost:5000/api/students/prefill/${value}`
       );
   
-      if (!res.ok) return;
+      if (!res.ok) {
+        console.log("Not found in master DB");
+        return;
+      }
   
       const data = await res.json();
   
-      setFullName(data.full_name || '');
-      setSignupEmail(data.email || '');
-      setMobileNumber(data.mobile || '');
-      setDegree(data.degree || '');
-      setBranch(data.branch || '');
-      setYear(data.year || '');
-      setSection(data.section || '');
+      setFullName(data.full_name || "");
+      setSignupEmail(data.email || "");
+      setMobileNumber(data.mobile || "");
+      setDegree(data.degree || "");
+      setBranch(data.branch || "");
+      setYear(data.year || "");
+      setSection(data.section || "");
   
     } catch (err) {
-      console.log(err);
+      console.log("Prefill error:", err);
     }
   };
 
@@ -207,9 +209,23 @@ const redirectPath = params.get("redirect");
       </div>
     );
   }
-
+  
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-accent/5 p-4">
+    <div className="relative min-h-screen w-full overflow-hidden">
+      
+      {/* Background Image */}
+      <div
+       className="fixed inset-0 -z-10 bg-[center_20%] bg-cover bg-no-repeat"
+        style={{
+          backgroundImage: "url('/college.jpg')",
+        }}
+      />
+  
+      {/* Dark Overlay */}
+      <div className="fixed inset-0 -z-10 bg-black/60" />
+  
+      {/* Center Content */}
+      <div className="min-h-screen flex items-center justify-center p-4">
       <motion.div
         className="w-full max-w-md"
         initial={{ opacity: 0, y: 20 }}
@@ -465,6 +481,7 @@ const redirectPath = params.get("redirect");
                       </div>
                     </div>
                   </motion.div>
+                  
                 )}
 
                 <Button type="submit" className="w-full" disabled={isLoading}>
@@ -486,6 +503,7 @@ const redirectPath = params.get("redirect");
           By continuing, you agree to our Terms of Service and Privacy Policy.
         </p>
       </motion.div>
-    </div>
+      </div>  
+      </div>    
   );
 }

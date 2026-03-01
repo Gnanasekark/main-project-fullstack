@@ -41,11 +41,20 @@ router.get("/:groupId/students", (req, res) => {
   const { groupId } = req.params;
 
   const query = `
-    SELECT u.id, u.full_name, u.reg_no, u.email
-    FROM group_memberships gm
-    JOIN users u ON gm.user_id = u.id
-    WHERE gm.group_id = ?
-  `;
+  SELECT 
+    u.id,
+    u.full_name,
+    u.reg_no,
+    u.email,
+    u.mobile,
+    u.degree,
+    u.branch,
+    u.year,
+    u.section
+  FROM group_memberships gm
+  JOIN users u ON gm.user_id = u.id
+  WHERE gm.group_id = ?
+`;
 
   db.query(query, [groupId], (err, results) => {
     if (err) {

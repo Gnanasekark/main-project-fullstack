@@ -27,8 +27,22 @@ router.post("/register", async (req, res) => {
   }
 
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
 
+    // ✅ 1️⃣ CHECK IF EMAIL ALREADY EXISTS
+    const [existingUser] = await db.promise().query(
+      "SELECT id FROM users WHERE email = ?",
+      [email]
+    );
+  
+    if (existingUser.length > 0) {
+      return res.status(400).json({
+        message: "Account already registered with this email"
+      });
+    }
+  
+    const hashedPassword = await bcrypt.hash(password, 10);
+  
+    // ✅ 2️⃣ INSERT USER
     const [result] = await db.promise().query(
       `INSERT INTO users
       (full_name, email, password, role, mobile, reg_no, degree, branch, year, section)
@@ -46,7 +60,6 @@ router.post("/register", async (req, res) => {
         userData.section || null,
       ]
     );
-
     const userId = result.insertId;
 
     // ✅ AUTO GROUP ASSIGN (CORRECT PLACE)

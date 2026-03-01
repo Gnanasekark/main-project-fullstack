@@ -2,26 +2,19 @@ import express from "express";
 import db from "../config/db.js";
 import multer from "multer";
 import xlsx from "xlsx";
-
+import bcrypt from "bcryptjs";
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
 
-/* ================= GET ALL STUDENTS ================= */
-router.get("/", (req, res) => {
-  db.query(
-    `SELECT u.id, u.full_name, u.email
-     FROM users u
-     JOIN students s ON s.user_id = u.id`,
-    (err, results) => {
-      if (err) return res.status(500).json(err);
-      res.json(results);
-    }
-  );
-});
+
 
 /* ================= UPLOAD STUDENTS EXCEL ================= */
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
     const filePath = req.file.path;
 
     const workbook = xlsx.readFile(filePath);
@@ -29,34 +22,78 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     const data = xlsx.utils.sheet_to_json(sheet, {
       defval: "",
       raw: false,
-      header: 0,
     });
 
+
     for (const row of data) {
-      await db.promise().query(
-        `INSERT INTO students_master 
-        (full_name, email, mobile, reg_no, degree, branch, year, section)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          row["Full Name"],
-          row["Email"],
-          row["Mobile Number(for Whatsapp)"],
-          row["Registration No"],
-          row["Degree"],
-          row["Branch"],
-          row["Year"],
-          row["Section"],
+    
+      const regNo = row["Registration no"] || "";
+      const email = row["Email"] || "";
+    
+      if (!email || !regNo) continue;
+    
+      // 🔐 Password = registration number
+      const hashedPassword = await bcrypt.hash(regNo, 10);
+    
+      // 1️⃣ Insert into users table WITH PASSWORD
+      const [result] = await db.promise().query(
+        `INSERT INTO users
+         (full_name, email, password, mobile, reg_no, degree, branch, year, section, role)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'student')
+         ON DUPLICATE KEY UPDATE
+         full_name = VALUES(full_name),
+         mobile = VALUES(mobile),
+         degree = VALUES(degree),
+         branch = VALUES(branch),
+         year = VALUES(year),
+         section = VALUES(section)`,
+         [
+          row["Name"] || "",
+          row["Email"] || "",
+          row["Mobile"] || "",
+          row["Reg No"] || "",
+          row["Degree"] || "",
+          row["Branch"] || "",
+          row["Year"] || "",
+          row["Section"] || "",
         ]
       );
-    }
+    
+      // 🔥 VERY IMPORTANT FIX
+      let userId = result.insertId;
+    
+      // If duplicate email → fetch existing user id
+      if (!userId) {
+        const [existing] = await db.promise().query(
+          "SELECT id FROM users WHERE email = ?",
+          [email]
+        );
+        userId = existing[0].id;
+      }
+    
+     // After insert/update → get correct user ID
+const [userRow] = await db.promise().query(
+  "SELECT id FROM users WHERE email = ?",
+  [row["Email"]]
+);
 
+
+if (req.body.groupId && userId) {
+  await db.promise().query(
+    `INSERT IGNORE INTO group_memberships (group_id, user_id)
+     VALUES (?, ?)`,
+    [req.body.groupId, userId]
+  );
+}
+    }
     res.json({ message: "Students uploaded successfully" });
 
   } catch (err) {
-    console.log(err);
+    console.error("UPLOAD ERROR:", err);  // 👈 important
     res.status(500).json({ message: "Upload failed" });
   }
 });
+
 
 /* ================= PREFILL STUDENT DETAILS ================= */
 router.get("/prefill/:regNo", async (req, res) => {
@@ -174,21 +211,71 @@ router.get("/:userId/assigned-forms", (req, res) => {
 });
 
 
+// UPDATE STUDENT
+router.put("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      full_name,
+      email,
+      mobile,
+      degree,
+      branch,
+      year,
+      section,
+    } = req.body;
+
+    await db.promise().query(
+      `
+      UPDATE users
+      SET full_name=?, email=?, mobile=?, degree=?, branch=?, year=?, section=?
+      WHERE id=?
+      `,
+      [
+        full_name,
+        email,
+        mobile,
+        degree,
+        branch,
+        year,
+        section,
+        id,
+      ]
+    );
+
+    res.json({ message: "Student updated" });
+  } catch (err) {
+    console.error("UPDATE ERROR:", err);
+    res.status(500).json({ message: "Update failed" });
+  }
+});
 
   // ✅ GET ALL STUDENTS (FIXED LOCATION)
-  router.get("/", (req, res) => {
-    db.query(
-      `SELECT u.id, u.full_name, u.email
-      FROM users u
-      JOIN students s ON s.user_id = u.id`,
-      (err, results) => {
-        if (err) return res.status(500).json(err);
-        res.json(results);
-      }
-    );
-  });
+  /* ================= GET ALL STUDENTS (FULL DATA) ================= */
+router.get("/", async (req, res) => {
+  try {
+    const [rows] = await db.promise().query(`
+      SELECT 
+        id,
+        full_name,
+        email,
+        mobile,
+        reg_no,
+        degree,
+        branch,
+        year,
+        section
+      FROM users
+      WHERE role = 'student'
+      ORDER BY reg_no ASC
+    `);
 
-
+    res.json(rows);
+  } catch (err) {
+    console.error("GET STUDENTS ERROR:", err);
+    res.status(500).json({ message: "Error fetching students" });
+  }
+});
 
 
   router.get("/:userId/assigned-forms", (req, res) => {
@@ -307,5 +394,36 @@ router.get("/:userId/assigned-forms", (req, res) => {
       }
     );
   });
+
+
+  /* ================= DELETE STUDENT ================= */
+
+router.delete("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // First delete from group_memberships
+    await db.promise().query(
+      "DELETE FROM group_memberships WHERE user_id = ?",
+      [id]
+    );
+
+    // Then delete from users table
+    const [result] = await db.promise().query(
+      "DELETE FROM users WHERE id = ?",
+      [id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    res.json({ message: "Student deleted successfully" });
+
+  } catch (err) {
+    console.error("DELETE ERROR:", err);
+    res.status(500).json({ message: "Delete failed" });
+  }
+});
 
   export default router;

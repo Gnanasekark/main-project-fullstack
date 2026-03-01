@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
-
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -43,11 +43,21 @@ interface GroupCount {
 export default function AdminDashboard() {
 
   const { profile } = useAuth();
-  const [users, setUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
+  
+  
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+const [searchTerm, setSearchTerm] = useState("");
 const [uploadFile, setUploadFile] = useState<File | null>(null);
 const [isUploading, setIsUploading] = useState(false);
+const [users, setUsers] = useState<User[]>([]);
+const [isLoading, setIsLoading] = useState(false);
+const [groups, setGroups] = useState<any[]>([]);
+const [selectedGroup, setSelectedGroup] = useState("");
+
   const [stats, setStats] = useState({
     
     totalUsers: 0,
@@ -71,6 +81,14 @@ const [isUploading, setIsUploading] = useState(false);
       if (!res.ok) {
         throw new Error('Failed to fetch admin dashboard data');
       }
+
+      // Fetch groups
+const groupRes = await fetch("http://localhost:5000/api/groups", {
+  credentials: "include",
+});
+
+const groupData = await groupRes.json();
+setGroups(groupData || []);
   
       /*
         Expected backend response:
@@ -135,15 +153,20 @@ const [isUploading, setIsUploading] = useState(false);
   };
 
 
-
   const handleUploadStudents = async () => {
     if (!uploadFile) {
       toast.error("Please select an Excel file");
       return;
     }
   
+    if (!selectedGroup) {
+      toast.error("Please select a group");
+      return;
+    }
+  
     const formData = new FormData();
     formData.append("file", uploadFile);
+    formData.append("groupId", selectedGroup);
   
     try {
       setIsUploading(true);
@@ -158,9 +181,14 @@ const [isUploading, setIsUploading] = useState(false);
   
       if (!res.ok) throw new Error();
   
-      toast.success("Students uploaded successfully");
+      toast.success("Students uploaded to selected group");
       setIsUploadOpen(false);
       setUploadFile(null);
+      setSelectedGroup("");
+      fetchData();
+      if (selectedGroup) {
+        await loadStudents(selectedGroup);
+      }
     } catch (error) {
       toast.error("Upload failed");
     } finally {
@@ -168,6 +196,23 @@ const [isUploading, setIsUploading] = useState(false);
     }
   };
 
+  const loadStudents = async (groupId: string) => {
+    try {
+      const res = await fetch(
+        `http://localhost:5000/api/groups/${groupId}/members`
+      );
+  
+      const data = await res.json();
+  
+      setGroups((prevGroups) =>
+        prevGroups.map((g) =>
+          g.id === groupId ? { ...g, students: data } : g
+        )
+      );
+    } catch (err) {
+      console.error("Load students error:", err);
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -188,132 +233,211 @@ const [isUploading, setIsUploading] = useState(false);
         </div>
         <div className="flex gap-2">
   <Button onClick={() => setIsUploadOpen(true)}>
-    <FileSpreadsheet className="w-4 h-4 mr-2" />
     Upload Students
   </Button>
-
-  <Button>
-    <Plus className="w-4 h-4 mr-2" />
-    Add User
-  </Button>
 </div>
+
+
+
       </motion.div>
 
-      {/* Stats cards */}
-      <motion.div
-        className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.1 }}
-      >
-        <StatCard
-          title="Total Users"
-          value={stats.totalUsers}
-          icon={Users}
-          color="text-primary"
-          bgColor="bg-primary/10"
-        />
-        <StatCard
-          title="Students"
-          value={stats.students}
-          icon={GraduationCap}
-          color="text-blue-500"
-          bgColor="bg-blue-500/10"
-        />
-        <StatCard
-          title="Teachers"
-          value={stats.teachers}
-          icon={BookOpen}
-          color="text-emerald-500"
-          bgColor="bg-emerald-500/10"
-        />
-        <StatCard
-          title="Admins"
-          value={stats.admins}
-          icon={Shield}
-          color="text-purple-500"
-          bgColor="bg-purple-500/10"
-        />
-        <StatCard
-          title="Groups"
-          value={stats.groups}
-          icon={Building2}
-          color="text-amber-500"
-          bgColor="bg-amber-500/10"
-        />
-        <StatCard
-          title="Forms"
-          value={stats.forms}
-          icon={FileSpreadsheet}
-          color="text-rose-500"
-          bgColor="bg-rose-500/10"
-        />
-      </motion.div>
+      <Card>
+  <CardContent className="p-6 flex justify-between">
+    <div>
+      <p className="text-sm text-muted-foreground">Total Students</p>
+      <p className="text-3xl font-bold">
+      {stats.students}
+      </p>
+    </div>
 
-      {/* Recent users */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.2 }}
-      >
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5" />
-              Recent Users
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
-              </div>
-            ) : users.length === 0 ? (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-                  <Users className="w-8 h-8 text-muted-foreground" />
-                </div>
-                <h3 className="text-lg font-semibold mb-2">No users yet</h3>
-                <p className="text-muted-foreground">
-                  Users will appear here as they sign up.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {users.map((user) => {
-                  const Icon = roleIcons[user.role as keyof typeof roleIcons] || Users;
-                  const colorClass = roleColors[user.role as keyof typeof roleColors] || roleColors.unknown;
-                  
-                  return (
-                    <div 
-                      key={user.id} 
-                      className="flex items-center justify-between p-4 rounded-xl border border-border hover:border-primary/50 transition-colors"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${colorClass}`}>
-                          <Icon className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h4 className="font-semibold">{user.full_name || 'Unnamed User'}</h4>
-                          <p className="text-sm text-muted-foreground">{user.email}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <Badge variant="outline" className="capitalize">
-                          {user.role}
-                        </Badge>
-                        <span className="text-sm text-muted-foreground">
-                          {new Date(user.created_at).toLocaleDateString()}
-                        </span>
-                      </div>
+    <GraduationCap className="w-10 h-10 text-primary" />
+  </CardContent>
+</Card>
+
+
+      {/* Groups & Students Section */}
+      <div className="space-y-6">
+
+{groups.map((group) => (
+  <motion.div
+    key={group.id}
+    
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.3 }}
+  >
+    <Card className="overflow-hidden">
+
+      {/* GROUP HEADER */}
+      <div className="flex justify-between items-center p-5 bg-muted/30 border-b">
+        
+        <div>
+          <h3 className="text-lg font-semibold">
+            {group.name}
+          </h3>
+
+          <Badge variant="secondary" className="mt-1">
+  {group.member_count || 0} Students
+</Badge>
+        </div>
+
+        <div className="flex gap-2">
+        <Button
+  size="sm"
+  variant="outline"
+  onClick={() => navigate(`/dashboard/groups/${group.id}/students`)}
+>
+  View
+</Button>
+        </div>
+      </div>
+
+      {/* STUDENT TABLE */}
+      {expandedGroup === group.id && (
+  <div className="p-5">
+
+        {/* Top Controls */}
+        <div className="flex justify-between items-center mb-4">
+        <Input
+  placeholder="Search student..."
+  className="max-w-xs"
+  value={searchTerm}
+  onChange={(e) => setSearchTerm(e.target.value)}
+/>
+
+          <div className="flex gap-2">
+          <Button
+  onClick={() => navigate(`/dashboard/groups/${groupId}/add-student`)}
+>
+  + Add Student
+</Button>
+            {selectedStudents.length > 0 && (
+  <Button
+    size="sm"
+    variant="destructive"
+    onClick={async () => {
+      await fetch("http://localhost:5000/api/students/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedStudents }),
+      });
+      toast.success("Deleted selected students");
+      setSelectedStudents([]);
+      fetchData();
+    }}
+  >
+    Delete Selected
+  </Button>
+)}
+
+            <Button size="sm" variant="outline">
+              Export Excel
+            </Button>
+          </div>
+          
+        </div>
+        
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50">
+              <tr>
+              <th className="p-3"></th>
+              <th className="p-3 text-left">Name</th>
+                <th className="p-3 text-left">Reg No</th>
+                <th className="p-3 text-left">Email</th>
+                <th className="p-3 text-left">Mobile</th>
+                <th className="p-3 text-right">Actions</th>
+              </tr>
+            </thead>
+
+            <tbody>
+            {group.students
+  ?.filter((student: any) =>
+    student.full_name
+      ?.toLowerCase()
+      .includes(searchTerm.toLowerCase())
+  )
+  .map((student: any) => (
+                <tr
+                  key={student.id}
+                  className="border-b hover:bg-muted/30 transition"
+                >
+<td className="p-3">
+  <input
+    type="checkbox"
+    checked={selectedStudents.includes(student.id)}
+    onChange={(e) => {
+      if (e.target.checked) {
+        setSelectedStudents([...selectedStudents, student.id]);
+      } else {
+        setSelectedStudents(
+          selectedStudents.filter((id) => id !== student.id)
+        );
+      }
+    }}
+  />
+</td>
+
+<td className="p-3 font-medium">
+                    {student.full_name}
+                  </td>
+                  <td className="p-3">
+                    {student.registration_no}
+                  </td>
+                  <td className="p-3">
+                    {student.email}
+                  </td>
+                  <td className="p-3">
+                    {student.mobile}
+                  </td>
+
+                  <td className="p-3 text-right">
+                    <div className="flex justify-end gap-2">
+                    <Button
+  variant="outline"
+  onClick={() =>
+    navigate(`/dashboard/students/${student.id}/edit`)
+  }
+>
+  Edit
+</Button>
+                      <Button
+  variant="destructive"
+  onClick={async () => {
+    if (!window.confirm("Are you sure?")) return;
+
+    await fetch(
+      `http://localhost:5000/api/students/${student.id}`,
+      { method: "DELETE" }
+    );
+
+    toast.success("Student deleted");
+    fetchStudents(); // reload list
+  }}
+>
+  Delete
+</Button>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </motion.div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+      )}
+    </Card>
+  </motion.div>
+))}
+
+</div>
+
+     
+
+     
 
       {/* Upload Students Dialog */}
 <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
@@ -322,15 +446,30 @@ const [isUploading, setIsUploading] = useState(false);
       <DialogTitle>Upload Students Excel</DialogTitle>
     </DialogHeader>
 
-    <div className="py-4">
-      <Input
-        type="file"
-        accept=".xlsx,.xls"
-        onChange={(e) => {
-          if (e.target.files) setUploadFile(e.target.files[0]);
-        }}
-      />
-    </div>
+    <div className="py-4 space-y-4">
+
+  <select
+    className="w-full border rounded-md p-2"
+    value={selectedGroup}
+    onChange={(e) => setSelectedGroup(e.target.value)}
+  >
+    <option value="">Select Group</option>
+    {groups.map((group) => (
+      <option key={group.id} value={group.id}>
+        {group.name}
+      </option>
+    ))}
+  </select>
+
+  <Input
+    type="file"
+    accept=".xlsx,.xls"
+    onChange={(e) => {
+      if (e.target.files) setUploadFile(e.target.files[0]);
+    }}
+  />
+
+</div>
 
     <DialogFooter>
       <Button variant="outline" onClick={() => setIsUploadOpen(false)}>
