@@ -412,16 +412,65 @@ router.post("/", async (req, res) => {
 });
 
 
+ // Delete 
 
+// DELETE FORM
+router.delete("/:id", async (req, res) => {
+  const token = req.headers.authorization?.split(" ")[1];
 
-router.delete("/:id", (req, res) => {
-  db.query("DELETE FROM forms WHERE id = ?", [req.params.id], (err) => {
-    if (err) return res.status(500).json({ message: "Delete failed" });
-    res.json({ message: "Deleted" });
-  });
+  if (!token) {
+    return res.status(401).json({ message: "No token" });
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.id;
+    const formId = req.params.id;
+
+    // 1️⃣ Check ownership
+    const [form] = await db.promise().query(
+      "SELECT id FROM forms WHERE id = ? AND created_by = ?",
+      [formId, userId]
+    );
+
+    if (form.length === 0) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    // 2️⃣ Delete related data FIRST
+    await db.promise().query(
+      "DELETE FROM form_submissions WHERE form_id = ?",
+      [formId]
+    );
+
+    await db.promise().query(
+      "DELETE FROM form_assignments WHERE form_id = ?",
+      [formId]
+    );
+
+    await db.promise().query(
+      "DELETE FROM form_permissions WHERE form_id = ?",
+      [formId]
+    );
+
+    await db.promise().query(
+      "DELETE FROM notifications WHERE related_form_id = ?",
+      [formId]
+    );
+
+    // 3️⃣ Delete form
+    await db.promise().query(
+      "DELETE FROM forms WHERE id = ?",
+      [formId]
+    );
+
+    res.json({ message: "Form deleted successfully" });
+
+  } catch (err) {
+    console.error("Delete error:", err);
+    res.status(500).json({ message: "Delete failed" });
+  }
 });
-
-
 
 
 router.post("/:id/submit", upload.any(), (req, res) => {

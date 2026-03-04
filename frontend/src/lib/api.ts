@@ -1,4 +1,10 @@
-export const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL =
+  (typeof import.meta !== "undefined" &&
+    import.meta.env &&
+    import.meta.env.VITE_API_BASE_URL) ||
+  (typeof window !== "undefined" ? window.location.origin : "");
+
+export { API_BASE_URL };
 
 export async function apiFetch(
   path: string,

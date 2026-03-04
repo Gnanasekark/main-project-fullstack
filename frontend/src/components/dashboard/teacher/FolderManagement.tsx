@@ -109,7 +109,7 @@ import { FormResponsesDialog } from './FormResponsesDialog';
   
  
   const handleDelete = async () => {
-    if (!form || !confirm("Are you sure you want to delete this form?")) return;
+    if (!form || !confirm("This will permanently delete the form and all submissions. Continue?")) return;
   
     setIsDeleting(true);
     try {
@@ -276,6 +276,19 @@ import { FormResponsesDialog } from './FormResponsesDialog';
                <Users className="w-4 h-4 mr-1" />
                Assign
              </Button>
+             <Button
+  size="sm"
+  variant="destructive"
+  onClick={handleDelete}
+  disabled={isDeleting}
+>
+  {isDeleting ? (
+    <Loader2 className="w-4 h-4 animate-spin mr-1" />
+  ) : (
+    <Trash2 className="w-4 h-4 mr-1" />
+  )}
+  Delete
+</Button>
            </div>
          </motion.div>
  
@@ -499,16 +512,7 @@ import { FormResponsesDialog } from './FormResponsesDialog';
  
        {/* Footer Actions */}
        <div className="p-4 border-t border-border flex items-center justify-between bg-muted/30">
-         <Button 
-           variant="ghost" 
-           size="sm" 
-           onClick={handleDelete}
-           disabled={isDeleting}
-           className="text-destructive hover:text-destructive"
-         >
-           {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
-           Delete Form
-         </Button>
+         
          <Button 
            variant="outline" 
            size="sm" 

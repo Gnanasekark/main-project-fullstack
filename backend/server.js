@@ -3,8 +3,12 @@ import cors from "cors";
 import dotenv from "dotenv";
 import session from "express-session";
 import path from "path";
-import http from "http";   // ✅ ADD THIS
+import http from "http";
+import { fileURLToPath } from "url";
 import { Server } from "socket.io";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // routes imports...
 import studentRoutes from "./routes/students.js";
@@ -52,6 +56,10 @@ app.use(
 
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
+// Serve frontend build (for production / Docker)
+const frontendDistPath = path.join(__dirname, "../frontend/dist");
+app.use(express.static(frontendDistPath));
+
 // ROUTES
 app.use("/api/students", studentRoutes);
 app.use("/api/dashboard", dashboardRoutes);
@@ -68,6 +76,14 @@ app.use("/api/folders", folderRoutes);
 app.use("/api/admin", adminRoutes);
 
 app.use("/api/notificationAnalytics", notificationAnalytics);
+
+// Fallback to index.html for SPA routes (non-API)
+app.get("*", (req, res, next) => {
+  if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) {
+    return next();
+  }
+  res.sendFile(path.join(frontendDistPath, "index.html"));
+});
 
 // ✅ CREATE HTTP SERVER (NOT app.listen)
 const server = http.createServer(app);
