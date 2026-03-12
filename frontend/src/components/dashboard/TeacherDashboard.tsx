@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import * as XLSX from 'xlsx';
+import ExcelJS from "exceljs";
 import { 
   Upload, 
   FileSpreadsheet, 

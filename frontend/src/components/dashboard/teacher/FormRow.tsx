@@ -20,7 +20,7 @@ import {
   AlertCircle,
   Calendar
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import ExcelJS from "exceljs";
 
 interface FormField {
   id: string;
@@ -133,66 +133,125 @@ export function FormRow({ form, onRefresh, onPreview, onAssign, onViewResponses,
     }
   };
   
-
   const handleDownload = async () => {
     setIsDownloading(true);
+  
     try {
       const res = await fetch(
         `http://localhost:5000/api/forms/${form.id}/responses`
       );
   
-      if (!res.ok) throw new Error("Failed to fetch responses");
+      if (!res.ok) throw new Error("Failed");
   
       const submissions = await res.json();
   
-      if (!submissions || submissions.length === 0) {
-        toast.info('No submissions to download');
-        setIsDownloading(false);
+      if (!submissions.length) {
+        toast.info("No submissions to download");
         return;
       }
   
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Responses");
+  
+      /* LOGOS */
+  
+      const collegeLogo = await fetch("/college_logo.png");
+      const collegeBuffer = await (await collegeLogo.blob()).arrayBuffer();
+  
+      const collegeLogoId = workbook.addImage({
+        buffer: collegeBuffer,
+        extension: "png",
+      });
+  
+      worksheet.addImage(collegeLogoId, {
+        tl: { col: 1, row: 0 },
+        ext: { width: 80, height: 80 },
+      });
+  
+      const actLogo = await fetch("/act_logo.png");
+      const actBuffer = await (await actLogo.blob()).arrayBuffer();
+  
+      const actLogoId = workbook.addImage({
+        buffer: actBuffer,
+        extension: "png",
+      });
+  
+      worksheet.addImage(actLogoId, {
+        tl: { col: 6, row: 0 },
+        ext: { width: 80, height: 80 },
+      });
+  
+      /* HEADER */
+  
+      worksheet.mergeCells("C1:F1");
+      worksheet.getCell("C1").value =
+        "ADHIYAMAAN COLLEGE OF ENGINEERING (AUTONOMOUS)";
+      worksheet.getCell("C1").font = { size: 16, bold: true };
+      worksheet.getCell("C1").alignment = { horizontal: "center" };
+  
+      worksheet.mergeCells("C2:F2");
+      worksheet.getCell("C2").value =
+        "DEPARTMENT OF COMPUTER SCIENCE AND ENGINEERING";
+      worksheet.getCell("C2").font = { size: 13, bold: true };
+      worksheet.getCell("C2").alignment = { horizontal: "center" };
+  
+      worksheet.mergeCells("C3:F3");
+      worksheet.getCell("C3").value = form.title.toUpperCase();
+      worksheet.getCell("C3").font = { size: 12, bold: true };
+      worksheet.getCell("C3").alignment = { horizontal: "center" };
+  
+      /* TABLE HEADER */
+  
       const headers = [
-        'Submitted At',
-        'Student Name',
-        'Email',
-        'Reg No',
-        ...form?.config?.fields?.map(f => f.label)
+        "Submitted At",
+        "Student Name",
+        "Email",
+        "Reg No",
+        ...form.config.fields.map((f) => f.label),
       ];
   
-      const rows = submissions.map((sub: any) => [
-        new Date(sub.submitted_at).toLocaleString(),
-        sub.profile?.full_name || 'Unknown',
-        sub.profile?.email || '',
-        sub.profile?.reg_no || '',
-        ...form?.config?.fields?.map(f => {
-          const value = sub.submission_data?.[f.id];
-          return value !== undefined && value !== null ? String(value) : '';
-        })
-      ]);
+      worksheet.getRow(5).values = headers;
+      worksheet.getRow(5).font = { bold: true };
   
-      const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      /* DATA */
   
-      const colWidths = headers.map((h, i) => {
-        const maxLen = Math.max(
-          h.length,
-          ...rows.map(r => String(r[i] || '').length)
-        );
-        return { wch: Math.min(maxLen + 2, 50) };
+      let rowIndex = 6;
+  
+      submissions.forEach((sub: any) => {
+        const row = [
+          new Date(sub.submitted_at).toLocaleString(),
+          sub.profile?.full_name || "Unknown",
+          sub.profile?.email || "",
+          sub.profile?.reg_no || "",
+          ...form.config.fields.map((f) => {
+            const value = sub.submission_data?.[f.id];
+            return value ?? "";
+          }),
+        ];
+  
+        worksheet.getRow(rowIndex).values = row;
+        rowIndex++;
       });
-      worksheet['!cols'] = colWidths;
   
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Submissions');
+      const buffer = await workbook.xlsx.writeBuffer();
   
-      XLSX.writeFile(
-        workbook,
-        `${form.title.replace(/[^a-zA-Z0-9]/g, '_')}_responses.xlsx`
-      );
+      const blob = new Blob([buffer], {
+        type:
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
   
-      toast.success(`Downloaded ${submissions.length} response(s)`);
+      const url = window.URL.createObjectURL(blob);
+  
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${form.title}_responses.xlsx`;
+      a.click();
+  
+      window.URL.revokeObjectURL(url);
+  
+      toast.success(`Downloaded ${submissions.length} responses`);
     } catch (error) {
-      console.error('Error downloading:', error);
-      toast.error('Failed to download responses');
+      toast.error("Download failed");
     } finally {
       setIsDownloading(false);
     }

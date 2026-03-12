@@ -32,7 +32,7 @@
     BarChart3
   } from 'lucide-react';
   import { toast } from 'sonner';
-  import * as XLSX from 'xlsx';
+  import ExcelJS from "exceljs";
   import { FormResponsesDialog } from './FormResponsesDialog';
   
   interface FormField {
@@ -196,60 +196,140 @@
       if (!form) return;
     
       setIsDownloading(true);
+    
       try {
         let dataToExport: StudentStatus[] = [];
     
-        if (type === "submitted") {
-          dataToExport = submittedStudents;
-        } else if (type === "pending") {
-          dataToExport = pendingStudents;
-        } else {
-          dataToExport = students; // full list
-        }
+        if (type === "submitted") dataToExport = submittedStudents;
+        else if (type === "pending") dataToExport = pendingStudents;
+        else dataToExport = students;
     
         if (dataToExport.length === 0) {
           toast.info("No data to download");
-          setIsDownloading(false);
           return;
         }
     
-        const headers = [
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet("Form Status");
+    
+        /* COLUMN WIDTHS */
+        worksheet.columns = [
+          { key: "status", width: 15 },
+          { key: "submitted_at", width: 25 },
+          { key: "reg_no", width: 20 },
+          { key: "name", width: 25 },
+          { key: "email", width: 30 },
+          { key: "phone", width: 20 },
+        ];
+    
+        /* LOGOS */
+    
+        const collegeLogoRes = await fetch("/college_logo.png");
+        const collegeBuffer = await (await collegeLogoRes.blob()).arrayBuffer();
+    
+        const collegeLogoId = workbook.addImage({
+          buffer: collegeBuffer,
+          extension: "png",
+        });
+    
+        worksheet.addImage(collegeLogoId, {
+          tl: { col: 1, row: 0 },
+          ext: { width: 80, height: 70 },
+        });
+    
+        const actLogoRes = await fetch("/act_logo.png");
+        const actBuffer = await (await actLogoRes.blob()).arrayBuffer();
+    
+        const actLogoId = workbook.addImage({
+          buffer: actBuffer,
+          extension: "png",
+        });
+    
+        worksheet.addImage(actLogoId, {
+          tl: { col: 6, row: 0 },
+          ext: { width: 80, height: 80 },
+        });
+    
+        /* HEADER */
+    
+        worksheet.mergeCells("C1:F1");
+        worksheet.getCell("C1").value = "ADHIYAMAAN COLLEGE OF ENGINEERING(AUTONOMOUS)";
+        worksheet.getCell("C1").font = { size: 16, bold: true };
+        worksheet.getCell("C1").alignment = { horizontal: "center" };
+    
+        worksheet.mergeCells("C2:F2");
+        worksheet.getCell("C2").value =
+          "DEPARTMENT OF COMPUTER SCIENCE AND ENGINEERING";
+        worksheet.getCell("C2").font = { size: 13, bold: true };
+        worksheet.getCell("C2").alignment = { horizontal: "center" };
+    
+        worksheet.mergeCells("C3:F3");
+        worksheet.getCell("C3").value = form.title.toUpperCase();
+        worksheet.getCell("C3").font = { size: 12, bold: true };
+        worksheet.getCell("C3").alignment = { horizontal: "center" };
+    
+        /* TABLE HEADER ROW (ROW 5) */
+    
+        worksheet.getRow(5).values = [
           "Status",
           "Submitted At",
           "Reg No",
           "Name",
           "Email",
-          "Contact No",  // ADD
+          "Contact No",
         ];
     
-        const rows = dataToExport.map((student) => [
-          student.submitted ? "Submitted" : "Pending",
-          student.submitted_at
-            ? new Date(student.submitted_at).toLocaleString()
-            : "-",
-          student.reg_no || "",
-          student.full_name || "",
-          student.email,
-          student.phone || "-",   // ADD
-        ]);
+        worksheet.getRow(5).font = { bold: true };
     
-        const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Form Status");
+        /* DATA STARTS FROM ROW 6 */
     
-        XLSX.writeFile(
-          workbook,
-          `${form.title.replace(/[^a-zA-Z0-9]/g, "_")}_${type}.xlsx`
-        );
+        let rowIndex = 6;
+    
+        dataToExport.forEach((student) => {
+          worksheet.getRow(rowIndex).values = [
+            student.submitted ? "Submitted" : "Pending",
+            student.submitted_at
+              ? new Date(student.submitted_at).toLocaleString()
+              : "-",
+            student.reg_no || "",
+            student.full_name || "",
+            student.email,
+            student.phone || "-",
+          ];
+    
+          rowIndex++;
+        });
+    
+        /* DOWNLOAD */
+    
+        const buffer = await workbook.xlsx.writeBuffer();
+    
+        const blob = new Blob([buffer], {
+          type:
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        });
+    
+        const url = window.URL.createObjectURL(blob);
+    
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${form.title}_${type}.xlsx`;
+        a.click();
+    
+        window.URL.revokeObjectURL(url);
     
         toast.success("Download successful");
+    
       } catch (error) {
+        console.error(error);
         toast.error("Download failed");
       } finally {
         setIsDownloading(false);
       }
     };
-  
+
+
+
     const handleRemind = async (student: StudentStatus) => {
       if (!form || !user) return;
     

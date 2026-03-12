@@ -32,7 +32,7 @@ import {
   BarChart3
 } from 'lucide-react';
 import { toast } from 'sonner';
-import * as XLSX from 'xlsx';
+import ExcelJS from "exceljs";
 import { FormResponsesDialog } from './FormResponsesDialog';
  
  
@@ -130,49 +130,139 @@ import { FormResponsesDialog } from './FormResponsesDialog';
   };
   
  
-   const handleDownload = async () => {
-     if (!form) return;
-     
-     setIsDownloading(true);
-     try {
-       const submittedStudents = students.filter(s => s.submitted);
-       
-       if (submittedStudents.length === 0) {
-         toast.info('No submissions to download');
-         setIsDownloading(false);
-         return;
-       }
- 
-       const headers = ['Submitted At', 'Reg No', 'Name', ...form.config.fields.map(f => f.label)];
-       const rows = submittedStudents.map(student => [
-         student.submitted_at ? new Date(student.submitted_at).toLocaleString() : '',
-         student.reg_no || '',
-         student.full_name || '',
-         ...form.config.fields.map(f => {
-           const value = student.submission_data?.[f.id];
-           return value !== undefined && value !== null ? String(value) : '';
-         })
-       ]);
- 
-       const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-       const colWidths = headers.map((h, i) => {
-         const maxLen = Math.max(h.length, ...rows.map(r => String(r[i] || '').length));
-         return { wch: Math.min(maxLen + 2, 50) };
-       });
-       worksheet['!cols'] = colWidths;
- 
-       const workbook = XLSX.utils.book_new();
-       XLSX.utils.book_append_sheet(workbook, worksheet, 'Submissions');
-       XLSX.writeFile(workbook, `${form.title.replace(/[^a-zA-Z0-9]/g, '_')}_responses.xlsx`);
-       
-       toast.success(`Downloaded ${submittedStudents.length} response(s)`);
-     } catch (error) {
-       console.error('Error downloading:', error);
-       toast.error('Failed to download responses');
-     } finally {
-       setIsDownloading(false);
-     }
-   };
+  const handleDownload = async () => {
+    if (!form) return;
+  
+    setIsDownloading(true);
+  
+    try {
+      const submittedStudents = students.filter((s) => s.submitted);
+  
+      if (submittedStudents.length === 0) {
+        toast.info("No submissions to download");
+        return;
+      }
+  
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Responses");
+  
+      /* COLUMN WIDTH */
+      worksheet.columns = [
+        { key: "submitted_at", width: 22 },
+        { key: "reg_no", width: 18 },
+        { key: "name", width: 25 },
+        { key: "email", width: 30 },
+        ...form.config.fields.map(() => ({ width: 25 })),
+      ];
+  
+      /* COLLEGE LOGO */
+      const collegeLogoRes = await fetch("/college_logo.png");
+      const collegeBuffer = await (await collegeLogoRes.blob()).arrayBuffer();
+  
+      const collegeLogoId = workbook.addImage({
+        buffer: collegeBuffer,
+        extension: "png",
+      });
+  
+      worksheet.addImage(collegeLogoId, {
+        tl: { col: 1, row: 0 },
+        ext: { width: 80, height: 80 },
+      });
+  
+      /* ACT LOGO */
+      const actLogoRes = await fetch("/act_logo.png");
+      const actBuffer = await (await actLogoRes.blob()).arrayBuffer();
+  
+      const actLogoId = workbook.addImage({
+        buffer: actBuffer,
+        extension: "png",
+      });
+  
+      worksheet.addImage(actLogoId, {
+        tl: { col: 6, row: 0 },
+        ext: { width: 80, height: 80 },
+      });
+  
+      /* HEADER */
+  
+      worksheet.mergeCells("C1:F1");
+      worksheet.getCell("C1").value =
+        "ADHIYAMAAN COLLEGE OF ENGINEERING (AUTONOMOUS)";
+      worksheet.getCell("C1").font = { size: 16, bold: true };
+      worksheet.getCell("C1").alignment = { horizontal: "center" };
+  
+      worksheet.mergeCells("C2:F2");
+      worksheet.getCell("C2").value =
+        "DEPARTMENT OF COMPUTER SCIENCE AND ENGINEERING";
+      worksheet.getCell("C2").font = { size: 13, bold: true };
+      worksheet.getCell("C2").alignment = { horizontal: "center" };
+  
+      worksheet.mergeCells("C3:F3");
+      worksheet.getCell("C3").value = form.title.toUpperCase();
+      worksheet.getCell("C3").font = { size: 12, bold: true };
+      worksheet.getCell("C3").alignment = { horizontal: "center" };
+  
+      /* TABLE HEADER */
+      const headers = [
+        "Submitted At",
+        "Reg No",
+        "Name",
+        "Email",
+        ...form.config.fields.map((f) => f.label),
+      ];
+  
+      worksheet.getRow(5).values = headers;
+      worksheet.getRow(5).font = { bold: true };
+  
+      /* DATA */
+  
+      let rowIndex = 6;
+  
+      submittedStudents.forEach((student) => {
+        const row = [
+          student.submitted_at
+            ? new Date(student.submitted_at).toLocaleString()
+            : "",
+          student.reg_no || "",
+          student.full_name || "",
+          student.email,
+          ...form.config.fields.map((f) => {
+            const value = student.submission_data?.[f.id];
+            return value ?? "";
+          }),
+        ];
+  
+        worksheet.getRow(rowIndex).values = row;
+        rowIndex++;
+      });
+  
+      /* DOWNLOAD */
+  
+      const buffer = await workbook.xlsx.writeBuffer();
+  
+      const blob = new Blob([buffer], {
+        type:
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+  
+      const url = window.URL.createObjectURL(blob);
+  
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${form.title.replace(/[^a-zA-Z0-9]/g, "_")}_responses.xlsx`;
+      a.click();
+  
+      window.URL.revokeObjectURL(url);
+  
+      toast.success(`Downloaded ${submittedStudents.length} response(s)`);
+  
+    } catch (error) {
+      console.error("Error downloading:", error);
+      toast.error("Failed to download responses");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
  
    const handleRemind = async (student: StudentStatus) => {
     if (!form) return;

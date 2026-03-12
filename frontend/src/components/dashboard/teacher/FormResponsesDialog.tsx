@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
 import { Loader2, FileText, Search, X, Filter, Download } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import ExcelJS from "exceljs";
 
 interface FormField {
   id: string;
@@ -113,54 +113,157 @@ export function FormResponsesDialog({ form, open, onOpenChange }: FormResponsesD
   }, [submissions, filters, form]);
 
   const hasActiveFilters = Object.values(filters).some(v => v.trim() !== '');
-
-  const handleDownloadExcel = (dataToDownload: SubmissionWithProfile[]) => {
-    if (!form || dataToDownload.length === 0) {
+  const handleDownloadExcel = async (dataToDownload: SubmissionWithProfile[]) => {
+    if (!form) {
+      console.error("Form is null");
       return;
     }
-    const headers = ['Submitted At', 'Reg No', 'Name', ...form?.config?.fields?.map(f => f.label)];
-    const rows = dataToDownload.map(sub => [
-      new Date(sub.submitted_at).toLocaleString(),
-      sub.profile?.reg_no || '',
-      sub.profile?.full_name || '',
-      ...form?.config?.fields?.map(f => {
-        const value = sub.submission_data[f.id];
-        return value !== undefined && value !== null ? String(value) : '';
-      })
-    ]);
-    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-    const colWidths = headers.map((h, i) => {
-      const maxLen = Math.max(h.length, ...rows.map(r => String(r[i] || '').length));
-      return { wch: Math.min(maxLen + 2, 50) };
-    });
-    worksheet['!cols'] = colWidths;
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Responses');
-    const suffix = hasActiveFilters ? '_filtered' : '';
-    XLSX.writeFile(workbook, `${form.title.replace(/[^a-zA-Z0-9]/g, '_')}${suffix}_responses.xlsx`);
-  };
-
-  if (!form) return null;
-  const handleResend = async (userId: string) => {
-    if (!form) return;
   
-    const confirmResend = window.confirm(
-      "Resend this form to this student?"
-    );
-    if (!confirmResend) return;
-  
+    if (dataToDownload.length === 0) {
+      console.warn("No submissions to download");
+      return;
+    }
     try {
-      const res = await fetch(
-        `http://localhost:5000/api/forms/${form.id}/resend/${userId}`,
-        { method: "PUT" }
-      );
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Responses");
   
-      if (!res.ok) throw new Error("Failed");
+    /* COLUMN WIDTH */
+worksheet.columns = [
+  { width: 22 },
+  { width: 18 },
+  { width: 25 },
+  { width: 20 },
+  { width: 20 },
+  { width: 25 },
+  { width: 30 },
+];
+
+/* ROW HEIGHTS */
+worksheet.getRow(1).height = 35;
+worksheet.getRow(2).height = 25;
+worksheet.getRow(3).height = 25;
+
+/* COLLEGE LOGO LEFT */
+const collegeLogo = await fetch("/college_logo.png");
+const collegeBuffer = await (await collegeLogo.blob()).arrayBuffer();
+
+const collegeLogoId = workbook.addImage({
+  buffer: collegeBuffer,
+  extension: "png",
+});
+
+worksheet.addImage(collegeLogoId, {
+  tl: { col: 1, row: 0 },
+  ext: { width: 85, height: 70 },
+});
+
+/* ACT LOGO RIGHT */
+const actLogo = await fetch("/act_logo.png");
+const actBuffer = await (await actLogo.blob()).arrayBuffer();
+
+const actLogoId = workbook.addImage({
+  buffer: actBuffer,
+  extension: "png",
+});
+
+worksheet.addImage(actLogoId, {
+  tl: { col: 6.5, row: 0 },
+  ext: { width: 85, height: 85 },
+});
+
+/* COLLEGE NAME */
+worksheet.mergeCells("B1:F1");
+
+worksheet.getCell("B1").value =
+  "ADHIYAMAAN COLLEGE OF ENGINEERING (AUTONOMOUS)";
+worksheet.getCell("B1").font = {
+  size: 16,
+  bold: true,
+};
+
+worksheet.getCell("B1").alignment = {
+  horizontal: "center",
+  vertical: "middle",
+};
+
+/* DEPARTMENT */
+worksheet.mergeCells("B2:F2");
+
+worksheet.getCell("B2").value =
+  "DEPARTMENT OF COMPUTER SCIENCE AND ENGINEERING";
+
+worksheet.getCell("B2").font = {
+  size: 13,
+  bold: true,
+};
+
+worksheet.getCell("B2").alignment = {
+  horizontal: "center",
+};
+
+/* FORM TITLE */
+worksheet.mergeCells("B3:F3");
+
+worksheet.getCell("B3").value = form.title.toUpperCase();
+
+worksheet.getCell("B3").font = {
+  size: 12,
+  bold: true,
+};
+
+worksheet.getCell("B3").alignment = {
+  horizontal: "center",
+};
   
-      alert("Form resent successfully");
-      fetchSubmissions(); // refresh table
-    } catch (err) {
-      alert("Failed to resend form");
+      /* TABLE HEADERS */
+  
+      const headers = [
+        "Submitted At",
+        "Reg No",
+        "Name",
+        ...form.config.fields.map((f) => f.label),
+      ];
+  
+      worksheet.getRow(5).values = headers;
+      worksheet.getRow(5).font = { bold: true };
+  
+      /* DATA */
+  
+      let rowIndex = 6;
+  
+      dataToDownload.forEach((sub) => {
+        const row = [
+          new Date(sub.submitted_at).toLocaleString(),
+          sub.profile?.reg_no || "",
+          sub.profile?.full_name || "",
+          ...form.config.fields.map((f) => {
+            const value = sub.submission_data[f.id];
+            return value !== undefined && value !== null ? String(value) : "";
+          }),
+        ];
+  
+        worksheet.getRow(rowIndex).values = row;
+        rowIndex++;
+      });
+  
+      const buffer = await workbook.xlsx.writeBuffer();
+  
+      const blob = new Blob([buffer], {
+        type:
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+  
+      const url = window.URL.createObjectURL(blob);
+  
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${form?.title?.replace(/[^a-zA-Z0-9]/g, "_") || "responses"}_responses.xlsx`;
+      a.click();
+  
+      window.URL.revokeObjectURL(url);
+  
+    } catch (error) {
+      console.error("Excel download failed:", error);
     }
   };
   
@@ -169,10 +272,10 @@ export function FormResponsesDialog({ form, open, onOpenChange }: FormResponsesD
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl max-h-[90vh]">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FileText className="w-5 h-5" />
-            Responses for "{form.title}"
-          </DialogTitle>
+        <DialogTitle className="flex items-center gap-2">
+  <FileText className="w-5 h-5" />
+  Responses for "{form?.title || "Form"}"
+</DialogTitle>
           <DialogDescription className="flex items-center justify-between">
             <span>{filteredSubmissions.length} of {submissions.length} submission{submissions.length !== 1 ? 's' : ''}</span>
             <div className="flex items-center gap-2">

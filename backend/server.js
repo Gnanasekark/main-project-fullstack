@@ -78,7 +78,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/notificationAnalytics", notificationAnalytics);
 
 // Fallback to index.html for SPA routes (non-API)
-app.get("*", (req, res, next) => {
+app.use((req, res, next) => {
   if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) {
     return next();
   }
