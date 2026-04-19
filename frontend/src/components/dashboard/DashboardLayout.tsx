@@ -3,7 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Logo } from '@/components/ui/Logo';
 import { Button } from '@/components/ui/button';
+import { Sparkles } from "lucide-react";
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import AiChatPanel from "../ai/AiChatPanel";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +36,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { profile, role, signOut } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [openAI, setOpenAI] = useState(false);
+  
 
   const handleSignOut = async () => {
     await signOut();
@@ -66,9 +70,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         { icon: FileSpreadsheet, label: 'Forms', href: '/dashboard/forms' },
         { icon: FileText, label: 'Circulars', href: '/dashboard/circulars' },
         { icon: Users, label: 'Groups', href: '/dashboard/groups' },
+    
+        // AI Assistant Button
+        { icon: Sparkles, label: 'AI Assistant', action: 'open-ai' }
       ];
     }
-
     if (role === 'admin') {
       return [
         ...baseItems,
@@ -159,18 +165,38 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               transition={{ type: 'spring', damping: 20 }}
             >
               <nav className="p-4 space-y-1">
-                {navItems.map((item) => (
-                  <Link
-                    key={item.href}
-                    to={item.href}
-                    className="flex items-center gap-3 px-4 py-3 rounded-xl text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-                    onClick={() => setSidebarOpen(false)}
-                  >
-                    <item.icon className="w-5 h-5" />
-                    <span>{item.label}</span>
-                  </Link>
-                ))}
-              </nav>
+  {navItems.map((item) => (
+    <div
+      key={item.label}
+      onClick={() => {
+        if (item.label === "AI Assistant") {
+          setOpenAI(true);
+        } else {
+          navigate(item.href);
+        }
+      }}
+      className="group flex items-center gap-3 px-4 py-3 rounded-xl text-sidebar-foreground hover:bg-sidebar-accent transition-colors cursor-pointer"
+    >
+      <item.icon
+        className={
+          item.label === "AI Assistant"
+            ? "w-8 h-8 p-2 rounded-full bg-gradient-to-r from-blue-500 via-purple-500 to-indigo-500 text-white shadow-lg"
+            : "w-5 h-5"
+        }
+      />
+
+      <span
+        className={
+          item.label === "AI Assistant"
+            ? "opacity-0 group-hover:opacity-100 transition-opacity"
+            : ""
+        }
+      >
+        {item.label}
+      </span>
+    </div>
+  ))}
+</nav>
             </motion.aside>
           </>
         )}
@@ -178,18 +204,39 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/* Desktop sidebar */}
       <aside className="hidden lg:block fixed top-16 left-0 bottom-0 w-64 bg-sidebar border-r border-sidebar-border">
-        <nav className="p-4 space-y-1">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              to={item.href}
-              className="flex items-center gap-3 px-4 py-3 rounded-xl text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-            >
-              <item.icon className="w-5 h-5" />
-              <span>{item.label}</span>
-            </Link>
-          ))}
-        </nav>
+      <nav className="p-4 space-y-1">
+  {navItems.map((item) => (
+    <div
+      key={item.label}
+      onClick={() => {
+        if (item.label === "AI Assistant") {
+          setOpenAI(true);
+        } else {
+          navigate(item.href);
+        }
+      }}
+      className="group flex items-center gap-3 px-4 py-3 rounded-xl text-sidebar-foreground hover:bg-sidebar-accent transition-colors cursor-pointer"
+    >
+      <item.icon
+        className={
+          item.label === "AI Assistant"
+            ? "w-8 h-8 p-2 rounded-full bg-gradient-to-r from-blue-500 via-purple-500 to-indigo-500 text-white shadow-lg"
+            : "w-5 h-5"
+        }
+      />
+
+      <span
+        className={
+          item.label === "AI Assistant"
+            ? "opacity-0 group-hover:opacity-100 transition-opacity"
+            : ""
+        }
+      >
+        {item.label}
+      </span>
+    </div>
+  ))}
+</nav>
       </aside>
 
       {/* Main content */}
@@ -198,6 +245,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           {children}
         </div>
       </main>
+      {openAI && (
+  <AiChatPanel onClose={() => setOpenAI(false)} />
+)}
     </div>
   );
 }

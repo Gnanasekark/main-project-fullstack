@@ -4,7 +4,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 export default function GroupStudents() {
     const { id } = useParams();
@@ -13,6 +19,34 @@ export default function GroupStudents() {
   const [search, setSearch] = useState("");
   const [isEditOpen, setIsEditOpen] = useState(false);
 const [editStudent, setEditStudent] = useState<any>(null);
+const [isAddOpen, setIsAddOpen] = useState(false);
+const [newStudent, setNewStudent] = useState({
+  full_name: "",
+  email: "",
+  mobile: "",
+  registration_no: "",
+  degree: "",
+  branch: "",
+  year: "",
+  section: "",
+});
+
+const [groupDetails, setGroupDetails] = useState({
+  degree: "",
+  branch: "",
+  year: "",
+  section: "",
+});
+const loadGroupDetails = async () => {
+  const res = await fetch(`http://localhost:5000/api/groups/${id}`);
+  const data = await res.json();
+  setGroupDetails(data);
+};
+
+useEffect(() => {
+  loadStudents();
+  loadGroupDetails();
+}, []);
 
   const loadStudents = async () => {
     try {
@@ -26,10 +60,8 @@ const [editStudent, setEditStudent] = useState<any>(null);
     }
   };
 
-  useEffect(() => {
-    loadStudents();
-  }, []);
-
+ 
+  
   return (
     <div className="space-y-6">
      <h1 className="text-2xl font-bold">
@@ -49,9 +81,19 @@ const [editStudent, setEditStudent] = useState<any>(null);
             />
 
 <Button
-  onClick={() =>
-    navigate(`/dashboard/groups/${id}/add-student`)
-  }
+  onClick={() => {
+    setNewStudent({
+      full_name: "",
+      email: "",
+      mobile: "",
+      registration_no: "",
+      degree: groupDetails.degree,
+      branch: groupDetails.branch,
+      year: groupDetails.year,
+      section: groupDetails.section,
+    });
+    setIsAddOpen(true);
+  }}
 >
   + Add Student
 </Button>
@@ -237,13 +279,114 @@ const [editStudent, setEditStudent] = useState<any>(null);
           Save Changes
         </Button>
       </div>
+      
 
     </div>
   </div>
 )}
 
+
         </CardContent>
       </Card>
+      <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Add Student</DialogTitle>
+    </DialogHeader>
+
+    <div className="space-y-3">
+      <Input
+        placeholder="Full Name"
+        value={newStudent.full_name}
+        onChange={(e) =>
+          setNewStudent({ ...newStudent, full_name: e.target.value })
+        }
+      />
+      <Input
+        placeholder="Email"
+        value={newStudent.email}
+        onChange={(e) =>
+          setNewStudent({ ...newStudent, email: e.target.value })
+        }
+      />
+      <Input
+        placeholder="Mobile"
+        value={newStudent.mobile}
+        onChange={(e) =>
+          setNewStudent({ ...newStudent, mobile: e.target.value })
+        }
+      />
+      <Input
+        placeholder="Register No"
+        value={newStudent.registration_no}
+        onChange={(e) =>
+          setNewStudent({
+            ...newStudent,
+            registration_no: e.target.value,
+          })
+        }
+      />
+      <Input
+        placeholder="Degree"
+        value={newStudent.degree}
+        onChange={(e) =>
+          setNewStudent({ ...newStudent, degree: e.target.value })
+        }
+      />
+      <Input
+        placeholder="Branch"
+        value={newStudent.branch}
+        onChange={(e) =>
+          setNewStudent({ ...newStudent, branch: e.target.value })
+        }
+      />
+      <Input
+        placeholder="Year"
+        value={newStudent.year}
+        onChange={(e) =>
+          setNewStudent({ ...newStudent, year: e.target.value })
+        }
+      />
+      <Input
+        placeholder="Section"
+        value={newStudent.section}
+        onChange={(e) =>
+          setNewStudent({ ...newStudent, section: e.target.value })
+        }
+      />
     </div>
+
+    <DialogFooter>
+      <Button variant="outline" onClick={() => setIsAddOpen(false)}>
+        Cancel
+      </Button>
+
+      <Button
+        onClick={async () => {
+          const res = await fetch("http://localhost:5000/api/students", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...newStudent,
+              group_id: id,
+            }),
+          });
+
+          if (res.ok) {
+            toast.success("Student added successfully");
+            setIsAddOpen(false);
+            loadStudents();
+          } else {
+            toast.error("Failed to add student");
+          }
+        }}
+      >
+        Save Student
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+    </div>
+    
   );
 }

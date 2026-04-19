@@ -14,6 +14,8 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import FormSubmission from "./pages/FormSubmission";
 import NotFound from "./pages/NotFound";
+import AiChat from "./pages/AiChat";
+
 
 
 const queryClient = new QueryClient();
@@ -31,6 +33,8 @@ const App = () => (
         <AuthProvider>
     
         <Routes>
+
+          
   <Route path="/" element={<Index />} />
   <Route path="/auth" element={<Auth />} />
   <Route path="/dashboard" element={<Dashboard />} />
@@ -48,8 +52,11 @@ const App = () => (
 />
 
 
+<Route path="/ai-chat" element={<AiChat />} />
+
   <Route path="*" element={<NotFound />} />
 </Routes>
+
 
 
           

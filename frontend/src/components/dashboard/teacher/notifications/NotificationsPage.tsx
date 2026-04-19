@@ -60,10 +60,17 @@ interface NotificationItem {
 
 export function NotificationsPage() {
   
-  const { user, role } = useAuth();
-  useSocket("newNotification", (data) => {
-    toast.success(data.title);
-  });
+  const { user } = useAuth();
+const role = user?.role || "";
+
+useSocket("new-notification", (data) => {
+  console.log("🔥 RECEIVED SOCKET:", data);
+
+  if (data.user_id === user?.id) {
+    toast.success(data.title + " - " + data.message);
+    fetchData();
+  }
+});
   
   useSocket("analyticsUpdated", () => {
     fetchData();
@@ -81,6 +88,7 @@ const [selectedNotification, setSelectedNotification] = useState<NotificationIte
 const [selectedReminder, setSelectedReminder] = useState<any>(null);
 const [expandedId, setExpandedId] = useState<number | null>(null);
 const [detailsData, setDetailsData] = useState<any>({});
+const [sortFilter, setSortFilter] = useState("all");
 
 
 const [formData, setFormData] = useState({
@@ -102,6 +110,7 @@ const [analytics, setAnalytics] = useState({
 
 
   const isTeacherOrAdmin = role === 'teacher' || role === 'admin';
+
   console.log("Role:", role);
 
 
@@ -124,9 +133,7 @@ const [analytics, setAnalytics] = useState({
   
       // 🔔 1. Fetch notifications
       const notifRes = await fetch(
-        isTeacherOrAdmin
-          ? "http://localhost:5000/api/notifications"
-          : "http://localhost:5000/api/notifications/my",
+        "http://localhost:5000/api/notifications",
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -227,10 +234,40 @@ await fetch(
     );
   };
 
-  const filteredNotifications = notifications.filter(
-    n =>
+  const filteredNotifications = notifications
+  .filter((n) => {
+    const matchesSearch =
       n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      n.message.toLowerCase().includes(searchQuery.toLowerCase())
+      n.message.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const notifDate = new Date(n.created_at);
+    const today = new Date();
+
+    if (sortFilter === "today") {
+      return (
+        matchesSearch &&
+        notifDate.toDateString() === today.toDateString()
+      );
+    }
+
+    if (sortFilter === "week") {
+      const weekAgo = new Date();
+      weekAgo.setDate(today.getDate() - 7);
+      return matchesSearch && notifDate >= weekAgo;
+    }
+
+    if (sortFilter === "month") {
+      const monthAgo = new Date();
+      monthAgo.setMonth(today.getMonth() - 1);
+      return matchesSearch && notifDate >= monthAgo;
+    }
+
+    return matchesSearch;
+  })
+  .sort(
+    (a, b) =>
+      new Date(b.created_at).getTime() -
+      new Date(a.created_at).getTime()
   );
 
   const getStatusIcon = (status: string) => {
@@ -297,7 +334,7 @@ if (formData.targetType === "group") {
       if (!res.ok) throw new Error("Failed to fetch group students");
   
       const groupStudents = await res.json();
-      selectedUserIds.push(...groupStudents.map((s: any) => s.id));
+      selectedUserIds.push(...groupStudents.map((s: any) => s.user_id || s.id));
     }
   }
   
@@ -437,11 +474,15 @@ if (formData.targetType === "group") {
 
       <div className="flex items-center gap-2">
         <span className="text-gray-500 text-sm">Sort:</span>
-        <Select defaultValue="today">
+        <Select
+  value={sortFilter}
+  onValueChange={(value) => setSortFilter(value)}
+>
           <SelectTrigger className="w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+          <SelectItem value="all">All</SelectItem>
             <SelectItem value="today">Today</SelectItem>
             <SelectItem value="week">This Week</SelectItem>
             <SelectItem value="month">This Month</SelectItem>
@@ -466,7 +507,14 @@ if (formData.targetType === "group") {
         className="rounded-2xl border p-5 hover:shadow-lg transition cursor-pointer"
         onClick={async () => {
           await handleMarkAsRead(notification.id);
-          setSelectedNotification(notification);
+        
+          const formId = notification.related_form_id;
+        
+          console.log("Redirecting to form:", formId);
+        
+          if (formId) {
+            navigate(`/dashboard/forms?formId=${formId}`); // ✅ CORRECT
+          }
         }}
       >
         <div className="flex justify-between items-start">

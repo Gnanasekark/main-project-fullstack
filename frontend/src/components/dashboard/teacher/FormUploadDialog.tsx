@@ -52,6 +52,8 @@ export function FormUploadDialog({
 
   const [staffList, setStaffList] = useState<any[]>([]);
 const [selectedStaff, setSelectedStaff] = useState<string[]>([]);
+const [mode, setMode] = useState<"create" | "upload">("upload");
+const [formName, setFormName] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -115,34 +117,48 @@ const [selectedStaff, setSelectedStaff] = useState<string[]>([]);
 
   
   const handleUpload = async () => {
-    if (!file || !user) return;
+    if (!user) return;
+
+if (mode === "upload" && !file) {
+  toast.error("Please select an Excel file");
+  return;
+}
+
+if (mode === "create" && !formName) {
+  toast.error("Please enter form name");
+  return;
+}
 
     setIsUploading(true);
 
     try {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data);
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
+      let fields = [];
 
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, {
-        header: 1,
-      }) as string[][];
+if (mode === "upload" && file) {
+  const data = await file.arrayBuffer();
+  const workbook = XLSX.read(data);
+  const sheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
 
-      if (jsonData.length < 1) {
-        toast.error("Excel file must have at least a header row");
-        setIsUploading(false);
-        return;
-      }
+  const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+    header: 1,
+  }) as string[][];
 
-      const headers = jsonData[0];
+  if (jsonData.length < 1) {
+    toast.error("Excel file must have at least a header row");
+    setIsUploading(false);
+    return;
+  }
 
-      const fields = headers.map((header, index) => ({
-        id: `field_${index}`,
-        label: String(header),
-        type: "text",
-        required: false,
-      }));
+  const headers = jsonData[0];
+
+  fields = headers.map((header, index) => ({
+    id: `field_${index}`,
+    label: String(header),
+    type: "text",
+    required: false,
+  }));
+}
 
       const token = localStorage.getItem("token");
 
@@ -153,9 +169,16 @@ const [selectedStaff, setSelectedStaff] = useState<string[]>([]);
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          title: file.name.replace(/\.(xlsx|xls)$/, ""),
-          description: `Form generated from ${file.name}`,
-          original_filename: file.name,
+         title:
+  mode === "create"
+    ? formName
+    : file?.name.replace(/\.(xlsx|xls)$/, ""),
+
+description:
+  mode === "create"
+    ? `Manual form created`
+    : `Form generated from ${file?.name}`,
+    original_filename: file?.name || null,
           created_by: user.id,
           config: { fields },
           view_permission: viewPermission,
@@ -224,12 +247,37 @@ const [selectedStaff, setSelectedStaff] = useState<string[]>([]);
         onOpenChange(o);
       }}
     >
-      <DialogContent className="max-w-lg">
+<DialogContent className="w-[620px] max-h-[85vh] flex flex-col">
+
         <DialogHeader>
           <DialogTitle>Upload Form</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-5 py-2">
+        <div className="space-y-5 py-2 overflow-y-auto pr-2">
+          {/* Mode Selection */}
+<div className="space-y-2">
+  <Label>Action</Label>
+
+  <div className="flex gap-4">
+    <Button
+      type="button"
+      variant={mode === "create" ? "default" : "outline"}
+      onClick={() => setMode("create")}
+      className="flex-1"
+    >
+      Create Form
+    </Button>
+
+    <Button
+      type="button"
+      variant={mode === "upload" ? "default" : "outline"}
+      onClick={() => setMode("upload")}
+      className="flex-1"
+    >
+      Upload Excel
+    </Button>
+  </div>
+</div>
           {/* Hidden File Input */}
           <input
             type="file"
@@ -238,9 +286,27 @@ const [selectedStaff, setSelectedStaff] = useState<string[]>([]);
             accept=".xlsx,.xls"
             className="hidden"
           />
+          {/* Form Name */}
+          {mode === "create" && (
+            <div className="space-y-2">
+              
+  <Label>Form Name *</Label>
+
+  <Input
+    placeholder="Enter form name"
+    value={formName}
+    onChange={(e) => setFormName(e.target.value)}
+    disabled={mode !== "create"}
+  />
+  
+  </div>
+)}
+
+
 
           {/* File Selection */}
-          <div className="space-y-2">
+          {mode === "upload" && (
+            <div className="space-y-2">
             <Label>Excel File *</Label>
 
             {file ? (
@@ -259,15 +325,17 @@ const [selectedStaff, setSelectedStaff] = useState<string[]>([]);
               </div>
             ) : (
               <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => fileInputRef.current?.click()}
-              >
+  variant="outline" 
+  className="w-full"
+  disabled={mode !== "upload"}
+  onClick={() => fileInputRef.current?.click()}
+>
                 <Upload className="w-4 h-4 mr-2" />
                 Select Excel File
               </Button>
             )}
-          </div>
+       </div>
+)}
 
           {/* Folder */}
           <div className="space-y-2">
@@ -322,7 +390,7 @@ const [selectedStaff, setSelectedStaff] = useState<string[]>([]);
   <div className="mt-3">
     <label className="text-sm font-medium">Select Staff</label>
 
-    <div className="mt-2 space-y-2">
+    <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
       {staffMembers
         .filter((staff) => staff.id !== user?.id)
         .map((staff) => {
@@ -379,7 +447,14 @@ const [selectedStaff, setSelectedStaff] = useState<string[]>([]);
             Cancel
           </Button>
 
-          <Button onClick={handleUpload} disabled={!file || isUploading}>
+          <Button
+  onClick={handleUpload}
+  disabled={
+    isUploading ||
+    (mode === "upload" && !file) ||
+    (mode === "create" && !formName)
+  }
+>
             {isUploading ? (
               <Loader2 className="w-4 h-4 animate-spin mr-2" />
             ) : (

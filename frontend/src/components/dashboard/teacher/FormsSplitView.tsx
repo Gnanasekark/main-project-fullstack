@@ -8,6 +8,7 @@ import { FormPreviewDialog } from "./FormPreviewDialog";
 import { FormAssignmentDialog } from "./FormAssignmentDialog";
 import { FormFieldEditorDialog } from "./FormFieldEditorDialog";
 import { FormUploadDialog } from "./FormUploadDialog";
+import { useLocation } from "react-router-dom";
 
 interface FormField {
   id: string;
@@ -36,6 +37,7 @@ interface FolderItem {
 }
 
 export function FormsSplitView() {
+  const location = useLocation();
   const [forms, setForms] = useState<Form[]>([]);
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
@@ -51,6 +53,18 @@ export function FormsSplitView() {
   const [previewForm, setPreviewForm] = useState<Form | null>(null);
   const [assignForm, setAssignForm] = useState<Form | null>(null);
   const [editFieldsForm, setEditFieldsForm] = useState<Form | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const formId = params.get("formId");
+  
+    if (formId && forms.length > 0) {
+      const exists = forms.find(f => f.id === formId);
+      if (exists) {
+        setSelectedFormId(formId);
+      }
+    }
+  }, [location.search, forms]);
 
   useEffect(() => {
     fetchForms();

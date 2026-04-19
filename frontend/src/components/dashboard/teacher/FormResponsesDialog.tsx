@@ -5,9 +5,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
+
 import { Loader2, FileText, Search, X, Filter, Download } from 'lucide-react';
 import ExcelJS from "exceljs";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
+import { Document, Packer, Paragraph, Table as DocTable, TableRow as DocRow, TableCell as DocCell } from "docx";
+import { saveAs } from "file-saver";
 interface FormField {
   id: string;
   label: string;
@@ -49,6 +54,7 @@ export function FormResponsesDialog({ form, open, onOpenChange }: FormResponsesD
   const [isLoading, setIsLoading] = useState(false);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [showFilters, setShowFilters] = useState(false);
+  const [downloadType, setDownloadType] = useState("");
 
   useEffect(() => {
     if (open && form) {
@@ -113,7 +119,99 @@ export function FormResponsesDialog({ form, open, onOpenChange }: FormResponsesD
   }, [submissions, filters, form]);
 
   const hasActiveFilters = Object.values(filters).some(v => v.trim() !== '');
+
+  const handleDownloadPDF = (data: SubmissionWithProfile[]) => {
+    if (!form) return;
+  
+    const doc = new jsPDF();
+  
+    doc.setFontSize(16);
+    doc.text("ADHIYAMAAN COLLEGE OF ENGINEERING (AUTONOMOUS)", 105, 15, { align: "center" });
+  
+    doc.setFontSize(12);
+    doc.text("DEPARTMENT OF COMPUTER SCIENCE AND ENGINEERING", 105, 22, { align: "center" });
+  
+    doc.text(form.title.toUpperCase(), 105, 30, { align: "center" });
+  
+    const headers = [
+      "Submitted At",
+      "Reg No",
+      "Name",
+      "Email"
+    ];
+  
+    const rows = data.map((sub) => [
+      new Date(sub.submitted_at).toLocaleString(),
+      sub.profile?.reg_no || "-",
+      sub.profile?.full_name || "-",
+      sub.profile?.email || "-"
+    ]);
+  
+    autoTable(doc,{
+      head:[headers],
+      body:rows,
+      startY:40
+    });
+  
+    doc.save(`${form.title}_responses.pdf`);
+  };
+
+
+  const handleDownloadWord = async (data: SubmissionWithProfile[]) => {
+    if (!form) return;
+  
+    const headers = [
+      "Status",
+      "Submitted At",
+      "Reg No",
+      "Name",
+      "Email",
+      "Contact No"
+    ];
+  
+    const rows = data.map((student) => [
+      student.submitted ? "Submitted" : "Pending",
+      student.submitted_at
+        ? new Date(student.submitted_at).toLocaleString()
+        : "-",
+      student.reg_no || "-",
+      student.full_name || "-",
+      student.email,
+      student.phone || "-"
+    ]);
+  
+    const tableRows = [
+      new DocRow({
+        children: headers.map(h => new DocCell({ children: [new Paragraph(h)] }))
+      }),
+      ...rows.map(r =>
+        new DocRow({
+          children: r.map(c => new DocCell({ children: [new Paragraph(String(c))] }))
+        })
+      )
+    ];
+  
+    const doc = new Document({
+      sections: [
+        {
+          children: [
+            new Paragraph("ADHIYAMAAN COLLEGE OF ENGINEERING (AUTONOMOUS)"),
+            new Paragraph("DEPARTMENT OF COMPUTER SCIENCE AND ENGINEERING"),
+            new Paragraph(form.title.toUpperCase()),
+            new DocTable({ rows: tableRows })
+          ]
+        }
+      ]
+    });
+  
+    const blob = await Packer.toBlob(doc);
+  
+    saveAs(blob, `${form.title}_status.docx`);
+  };
+
+
   const handleDownloadExcel = async (dataToDownload: SubmissionWithProfile[]) => {
+    
     if (!form) {
       console.error("Form is null");
       return;
@@ -299,16 +397,39 @@ worksheet.getCell("B3").alignment = {
                   Clear
                 </Button>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8"
-                onClick={() => handleDownloadExcel(hasActiveFilters ? filteredSubmissions : submissions)}
-                disabled={submissions.length === 0}
-              >
-                <Download className="w-4 h-4 mr-1" />
-                {hasActiveFilters ? 'Download Filtered' : 'Download All'}
-              </Button>
+              <div className="flex items-center gap-2">
+
+              <div className="relative">
+             <select
+  className="border rounded px-3 py-1 text-sm"
+  value={downloadType}
+  onChange={(e) => {
+    const value = e.target.value;
+    setDownloadType(value);
+
+    const data = hasActiveFilters ? filteredSubmissions : submissions;
+
+    if (value === "excel") {
+      handleDownloadExcel(data);
+    }
+
+    if (value === "pdf") {
+      handleDownloadPDF(data);
+    }
+
+    if (value === "word") {
+      handleDownloadWord(data);
+    }
+  }}
+>
+  <option value="">Select Format</option>
+  <option value="excel">Excel</option>
+  <option value="pdf">PDF</option>
+  <option value="word">Word</option>
+</select>
+</div>
+
+</div>
             </div>
           </DialogDescription>
         </DialogHeader>
@@ -448,23 +569,38 @@ function formatCellValue(value: unknown, fieldType: string): React.ReactNode {
       } catch {
         return strValue;
       }
+      
 
-    case 'file':
-      return (
-        <div className="flex items-center gap-2">
-          <span className="truncate max-w-[150px]">{strValue}</span>
-
-          <a
-            href={`http://localhost:5000/uploads/${strValue}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-primary hover:underline text-sm"
-          >
-            View
-          </a>
-        </div>
-      );
-
+      case 'file':
+        return (
+          <div className="flex items-center gap-2">
+      
+            {/* file name */}
+            <span className="truncate max-w-[150px]">
+              {strValue}
+            </span>
+      
+            {/* view button */}
+            <a
+              href={`http://localhost:5000/uploads/${strValue}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline text-sm"
+            >
+              View
+            </a>
+      
+            {/* download button */}
+            <a
+              href={`http://localhost:5000/uploads/${strValue}`}
+              download
+              className="text-green-600 hover:underline text-sm"
+            >
+              Download
+            </a>
+      
+          </div>
+        );
     default:
       return strValue;
   }

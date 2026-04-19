@@ -1,22 +1,27 @@
-import { useState } from "react";
-import { useSocket } from "@/hooks/useSocket";
-import { Bell } from "lucide-react";
+import { useEffect } from "react";
+import socket from "../../../../socket";
 
-export default function NotificationBell() {
-  const [count, setCount] = useState(0);
+const NotificationBell = () => {
+  useEffect(() => {
+    // 🔔 Listen for new notification
+    socket.on("new-notification", (data: any) => {
+      console.log("🔔 New Notification:", data);
 
-  useSocket("newNotification", () => {
-    setCount(prev => prev + 1);
-  });
+      // Simple popup (for demo)
+      alert(`${data.title}\n${data.message}`);
+    });
+
+    // Cleanup
+    return () => {
+      socket.off("new-notification");
+    };
+  }, []);
 
   return (
-    <div className="relative cursor-pointer">
-      <Bell className="w-6 h-6" />
-      {count > 0 && (
-        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-          {count}
-        </span>
-      )}
+    <div style={{ cursor: "pointer", fontSize: "20px" }}>
+      🔔 Notifications
     </div>
   );
-}
+};
+
+export default NotificationBell;

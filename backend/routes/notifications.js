@@ -50,32 +50,51 @@ const JWT_SECRET = process.env.JWT_SECRET || "secret123";
 
             
              /* Notifications  */
-             router.get("/", verifyToken, (req, res) => {
-              const teacherId = req.user.id;
+             router.get("/", verifyToken, async (req, res) => {
+              try {
+                const userId = req.user.id;
+                const role = req.user.role;
             
-              const query = `
-                SELECT n1.*
-                FROM notifications n1
-                INNER JOIN (
-                    SELECT 
-                        MAX(id) as id
+                let query = "";
+                let params = [];
+            
+                if (role === "student") {
+                  query = `
+                    SELECT id, title, message, status, related_form_id, created_at, is_read
+                    FROM notifications
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC
+                  `;
+                  params = [userId];
+                } 
+                else if (role === "teacher") {
+                  query = `
+                    SELECT id, title, message, status, related_form_id, created_at, is_read
                     FROM notifications
                     WHERE created_by = ?
-                    GROUP BY related_form_id, title
-                ) n2 ON n1.id = n2.id
-                ORDER BY n1.created_at DESC
-              `;
-            
-              db.query(query, [teacherId], (err, rows) => {
-                if (err) {
-                  console.error(err);
-                  return res.status(500).json({ message: "DB error" });
+                    ORDER BY created_at DESC
+                  `;
+                  params = [userId];
+                } 
+                else {
+                  query = `
+                    SELECT id, title, message, status, related_form_id, created_at, is_read
+                    FROM notifications
+                    ORDER BY created_at DESC
+                  `;
                 }
             
+                const [rows] = await db.promise().query(query, params);
+            
+                console.log("📢 Notifications fetched:", rows.length);
+            
                 res.json(rows);
-              });
+            
+              } catch (err) {
+                console.error("Notification fetch error:", err);
+                res.status(500).json({ error: "Server error" });
+              }
             });
-
             /* Notifications export csv  */
 
 router.get("/export", async (req, res) => {
@@ -129,30 +148,31 @@ router.post("/send", async (req, res) => {
 
 
           /* Notifications  */
-          router.get("/my", verifyToken, (req, res) => {
-            const userId = req.user.id;
+          router.get("/my", verifyToken, async (req, res) => {
+            try {
+              const userId = req.user.user_id || req.user.id;
+              console.log("Fetching for user:", userId);
           
-            db.query(
-              `
-              SELECT 
-                n.*,
-                u.full_name AS sender_name,
-                u.email AS sender_email
-              FROM notifications n
-              JOIN users u ON u.id = n.created_by
-              WHERE n.user_id = ?
-              ORDER BY n.created_at DESC
-              `,
-              [userId],
-              (err, rows) => {
-                if (err) {
-                  console.error("MY NOTIFICATIONS ERROR:", err);
-                  return res.status(500).json({ message: "DB error" });
-                }
+              const [rows] = await db.promise().query(`
+                SELECT 
+                  id,
+                  title,
+                  message,
+                  status,
+                  related_form_id,
+                  created_at,
+                  is_read
+                FROM notifications
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+              `, [userId]);
           
-                res.json(rows);
-              }
-            );
+              res.json(rows);
+          
+            } catch (err) {
+              console.error("MY NOTIFICATIONS ERROR:", err);
+              res.status(500).json({ message: "DB error" });
+            }
           });
 /* ========================= */
           /* Mark     */
@@ -260,7 +280,13 @@ router.post("/bulk", async (req, res) => {
 
       if (channel === "whatsapp" || channel === "both") {
         try {
-          await sendWhatsAppMessage(student.mobile);
+          await sendWhatsAppMessage(
+            student.mobile,
+            student.full_name,
+            formTitle,
+            formLink,
+            teacherName
+          );
         } catch (waError) {
           console.error("WhatsApp failed but continuing:", waError.message);
         }

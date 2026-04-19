@@ -210,7 +210,17 @@ router.get("/:id/members", (req, res) => {
   );
 });
 
+// GET single group details
+router.get("/:id", async (req, res) => {
+  const { id } = req.params;
 
+  const [rows] = await db.promise().query(
+    "SELECT degree, branch, year, section FROM `groups` WHERE id = ?",
+    [id]
+  );
+
+  res.json(rows[0]);
+});
 
 /* ================= SAVE MEMBERS ================= */
 

@@ -5,6 +5,27 @@
   import { Badge } from '@/components/ui/badge';
   import { Progress } from '@/components/ui/progress';
   import { Card, CardContent } from '@/components/ui/card';
+
+  import ExcelJS from "exceljs";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+
+
+import { saveAs } from "file-saver";
+import { ImageRun } from "docx";
+
+import {
+  Document,
+  Packer,
+  Paragraph,
+  Table as DocTable,
+  TableRow as DocRow,
+  TableCell as DocCell,
+  TextRun,
+} from "docx";
+
+
+
   import { 
     Table, 
     TableBody, 
@@ -32,7 +53,6 @@
     BarChart3
   } from 'lucide-react';
   import { toast } from 'sonner';
-  import ExcelJS from "exceljs";
   import { FormResponsesDialog } from './FormResponsesDialog';
   
   interface FormField {
@@ -42,18 +62,7 @@
     required: boolean;
   }
   
-  interface Form {
-    id: string;
-    title: string;
-    description: string | null;
-    original_filename: string | null;
-    is_active: boolean;
-    created_at: string;
-    config: {
-      fields: FormField[];
-    };
-  }
-
+  
   interface Form {
     id: string;
     title: string;
@@ -102,6 +111,7 @@
     const [responsesForm, setResponsesForm] = useState<Form | null>(null);
     const [sendingReminder, setSendingReminder] = useState<string | null>(null);
     const [assignedGroups, setAssignedGroups] = useState<{ id: number; name: string }[]>([]);
+    const [downloadType, setDownloadType] = useState<"pending" | "submitted" | "all" | null>(null);
     
     useEffect(() => {
       if (form) {
@@ -329,6 +339,248 @@
     };
 
 
+    const handleDownloadPDF = async (data: StudentStatus[]) => {
+      if (!form) return;
+    
+      const doc = new jsPDF("p", "mm", "a4");
+    
+      /* LOAD LOGOS */
+      const collegeLogo = await fetch("/college_logo.png");
+      const collegeBlob = await collegeLogo.blob();
+      const collegeBase64 = await blobToBase64(collegeBlob);
+    
+      const actLogo = await fetch("/act_logo.png");
+      const actBlob = await actLogo.blob();
+      const actBase64 = await blobToBase64(actBlob);
+    
+      /* ADD LOGOS */
+      doc.addImage(collegeBase64, "PNG", 8, 13, 22, 20);
+      doc.addImage(actBase64 as string, "PNG", 178, 10, 22, 22);
+    
+      /* COLLEGE TITLE */
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+    
+      doc.text(
+        "ADHIYAMAAN COLLEGE OF ENGINEERING (AUTONOMOUS)",
+        105,
+        18,
+        { align: "center" }
+      );
+    
+      /* DEPARTMENT */
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "normal");
+    
+      doc.text(
+        "DEPARTMENT OF COMPUTER SCIENCE AND ENGINEERING",
+        105,
+        25,
+        { align: "center" }
+      );
+    
+      /* FORM TITLE */
+      doc.setFont("helvetica", "bold");
+      doc.text(form.title.toUpperCase(), 105, 32, { align: "center" });
+    
+      /* TABLE */
+    
+      const headers = [
+        "Status",
+        "Submitted At",
+        "Reg No",
+        "Name",
+        "Email",
+        "Contact No",
+      ];
+    
+      const rows = data.map((student) => [
+        student.submitted ? "Submitted" : "Pending",
+        student.submitted_at
+          ? new Date(student.submitted_at).toLocaleString()
+          : "-",
+        student.reg_no || "-",
+        student.full_name || "-",
+        student.email,
+        student.phone || "-",
+      ]);
+    
+      autoTable(doc, {
+        startY: 45,
+        head: [headers],
+        body: rows,
+        theme: "grid",
+    
+        headStyles: {
+          fillColor: [41, 128, 185],
+          textColor: 255,
+          halign: "center",
+          fontStyle: "bold",
+        },
+    
+        styles: {
+          fontSize: 10,
+          cellPadding: 4,
+        },
+      });
+    
+      doc.save(`${form.title}.pdf`);
+    };
+
+
+    function blobToBase64(blob: Blob) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+    }
+    
+
+    const handleDownloadWord = async (data: StudentStatus[]) => {
+      if (!form) return;
+    
+      const collegeLogo = await fetch("/college_logo.png");
+      const collegeBuffer = await collegeLogo.arrayBuffer();
+    
+      const actLogo = await fetch("/act_logo.png");
+      const actBuffer = await actLogo.arrayBuffer();
+    
+      const headers = [
+        "Status",
+        "Submitted At",
+        "Reg No",
+        "Name",
+        "Email",
+        "Contact No",
+      ];
+    
+      const rows = data.map((student) => [
+        student.submitted ? "Submitted" : "Pending",
+        student.submitted_at
+          ? new Date(student.submitted_at).toLocaleString()
+          : "-",
+        student.reg_no || "-",
+        student.full_name || "-",
+        student.email || "-",
+        student.phone || "-",
+      ]);
+    
+      const tableRows = [
+        new DocRow({
+          children: headers.map(
+            (header) =>
+              new DocCell({
+                children: [
+                  new Paragraph({
+                    text: header,
+                    bold: true,
+                    alignment: "center",
+                  }),
+                ],
+              })
+          ),
+        }),
+    
+        ...rows.map(
+          (row) =>
+            new DocRow({
+              children: row.map(
+                (cell) =>
+                  new DocCell({
+                    children: [
+                      new Paragraph({
+                        text: String(cell),
+                        alignment: "center",
+                      }),
+                    ],
+                  })
+              ),
+            })
+        ),
+      ];
+    
+      const doc = new Document({
+        sections: [
+          {
+            children: [
+    
+              // Logos Row
+              new DocTable({
+                rows: [
+                  new DocRow({
+                    children: [
+                      new DocCell({
+                        children: [
+                          new Paragraph({
+                            children: [
+                              new ImageRun({
+                                data: collegeBuffer,
+                                transformation: { width: 80, height: 80 },
+                              }),
+                            ],
+                          }),
+                        ],
+                      }),
+    
+                      new DocCell({
+                        children: [
+                         new Paragraph({
+                        text: "ADHIYAMAAN COLLEGE OF ENGINEERING (AUTONOMOUS)",
+                        bold: true,
+                        size: 32,   // BIG FONT
+                        alignment: "center",
+                      }),
+                                              new Paragraph({
+                        text: "DEPARTMENT OF COMPUTER SCIENCE AND ENGINEERING",
+                        bold: true,
+                        size: 24,
+                        alignment: "center",
+                      }),
+                                                new Paragraph({
+                            text: form.title.toUpperCase(),
+                            bold: true,
+                            alignment: "center",
+                          }),
+                        ],
+                      }),
+    
+                      new DocCell({
+                        children: [
+                          new Paragraph({
+                            children: [
+                              new ImageRun({
+                                data: actBuffer,
+                                transformation: { width: 80, height: 80 },
+                              }),
+                            ],
+                            alignment: "right",
+                          }),
+                        ],
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+    
+              new Paragraph({ text: "" }),
+    
+              // Students Table
+              new DocTable({
+                rows: tableRows,
+              }),
+            ],
+          },
+        ],
+      });
+    
+      const blob = await Packer.toBlob(doc);
+      saveAs(blob, `${form.title}.docx`);
+    };
+
+
+
+    
 
     const handleRemind = async (student: StudentStatus) => {
       if (!form || !user) return;
@@ -738,18 +990,18 @@
   
         {/* Footer Actions */}
         <div className="flex items-center gap-2">
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={() => handleDownload("pending")}
-    >
-      Download Pending
-    </Button>
+        <Button
+  variant="outline"
+  size="sm"
+  onClick={() => setDownloadType("pending")}
+>
+  Download Pending
+</Button>
 
     <Button
       variant="outline"
       size="sm"
-      onClick={() => handleDownload("submitted")}
+      onClick={() => setDownloadType("submitted")}
     >
       Download Submitted
     </Button>
@@ -757,11 +1009,74 @@
     <Button
       variant="default"
       size="sm"
-      onClick={() => handleDownload("all")}
+      onClick={() => setDownloadType("all")}
     >
       Download Full Status
     </Button>
   </div>
+
+  {downloadType && (
+  <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50">
+    <div className="bg-white rounded-lg p-6 w-[300px] space-y-4">
+      
+      <h3 className="text-lg font-semibold text-center">
+        Choose Download Format
+      </h3>
+
+      <div className="flex flex-col gap-2">
+
+        <Button
+          onClick={() => {
+            handleDownload(downloadType);
+            setDownloadType(null);
+          }}
+        >
+          Excel
+        </Button>
+
+        <Button
+  variant="outline"
+  onClick={()=>{
+    handleDownloadPDF(
+      downloadType === "pending"
+        ? pendingStudents
+        : downloadType === "submitted"
+        ? submittedStudents
+        : students
+    );
+    setDownloadType(null);
+  }}
+>
+  PDF
+</Button>
+
+        <Button
+          variant="outline"
+          onClick={() => {
+            handleDownloadWord(
+              downloadType === "pending"
+                ? pendingStudents
+                : downloadType === "submitted"
+                ? submittedStudents
+                : students
+            );
+            setDownloadType(null);
+          }}
+        >
+          Word
+        </Button>
+
+        <Button
+          variant="ghost"
+          onClick={() => setDownloadType(null)}
+        >
+          Cancel
+        </Button>
+
+      </div>
+    </div>
+  </div>
+)}
 
           {/* Responses Dialog */}
           <FormResponsesDialog

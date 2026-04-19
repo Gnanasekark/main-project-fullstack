@@ -1,9 +1,15 @@
 import axios from "axios";
 
-const sendWhatsAppMessage = async (to) => {
+const sendWhatsAppMessage = async (
+  to,
+  studentName,
+  formTitle,
+  formLink,
+  teacherName
+) => {
   try {
-    const formattedNumber = to.startsWith("91") 
-      ? to 
+    const formattedNumber = to.startsWith("91")
+      ? to
       : `91${to.replace("+", "")}`;
 
     const response = await axios.post(
@@ -13,10 +19,19 @@ const sendWhatsAppMessage = async (to) => {
         to: formattedNumber,
         type: "template",
         template: {
-          name: "hello_world",
-          language: {
-            code: "en_US"
-          }
+          name: "form_assignment",
+          language: { code: "en_US" },
+          components: [
+            {
+              type: "body",
+              parameters: [
+                { type: "text", text: studentName },
+                { type: "text", text: formTitle },
+                { type: "text", text: formLink },
+                { type: "text", text: teacherName }
+              ]
+            }
+          ]
         }
       },
       {

@@ -11,17 +11,31 @@ router.get("/", verifyToken, async (req, res) => {
 
     let totalQuery;
     let readQuery;
+    let params = [];
 
+    // 🎓 STUDENT
     if (role === "student") {
       totalQuery = "SELECT COUNT(*) as count FROM notifications WHERE user_id = ?";
       readQuery = "SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 1";
-    } else {
-      totalQuery = "SELECT COUNT(*) as count FROM notifications WHERE created_by = ?";
-      readQuery = "SELECT COUNT(*) as count FROM notifications WHERE created_by = ? AND is_read = 1";
+      params = [userId];
     }
 
-    const [totalRows] = await db.promise().query(totalQuery, [userId]);
-    const [readRows] = await db.promise().query(readQuery, [userId]);
+    // 👨‍🏫 TEACHER
+    else if (role === "teacher") {
+      totalQuery = "SELECT COUNT(*) as count FROM notifications WHERE created_by = ?";
+      readQuery = "SELECT COUNT(*) as count FROM notifications WHERE created_by = ? AND is_read = 1";
+      params = [userId];
+    }
+
+    // 👑 ADMIN (SEE ALL)
+    else if (role === "admin") {
+      totalQuery = "SELECT COUNT(*) as count FROM notifications";
+      readQuery = "SELECT COUNT(*) as count FROM notifications WHERE is_read = 1";
+      params = [];
+    }
+
+    const [totalRows] = await db.promise().query(totalQuery, params);
+    const [readRows] = await db.promise().query(readQuery, params);
 
     const total = totalRows[0].count;
     const read = readRows[0].count;

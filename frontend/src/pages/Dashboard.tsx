@@ -11,6 +11,7 @@ import { NotificationsPage } from '@/components/dashboard/teacher/notifications/
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { StudentCircularsView } from '@/components/dashboard/StudentCircularsView';
 import { Loader2 } from 'lucide-react';
+import { Bot } from "lucide-react";
 
 export default function Dashboard() {
   const { user, role, isLoading } = useAuth();

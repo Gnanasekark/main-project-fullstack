@@ -219,22 +219,25 @@ router.put("/:id", async (req, res) => {
       full_name,
       email,
       mobile,
+      registration_no,
+      reg_no,
       degree,
       branch,
       year,
       section,
     } = req.body;
 
+    const regNumber = registration_no || reg_no;
+
     await db.promise().query(
-      `
-      UPDATE users
-      SET full_name=?, email=?, mobile=?, degree=?, branch=?, year=?, section=?
-      WHERE id=?
-      `,
+      `UPDATE users 
+       SET full_name=?, email=?, mobile=?, reg_no=?, degree=?, branch=?, year=?, section=?
+       WHERE id=?`,
       [
         full_name,
         email,
         mobile,
+        regNumber,
         degree,
         branch,
         year,
@@ -243,7 +246,7 @@ router.put("/:id", async (req, res) => {
       ]
     );
 
-    res.json({ message: "Student updated" });
+    res.json({ message: "Student updated successfully" });
   } catch (err) {
     console.error("UPDATE ERROR:", err);
     res.status(500).json({ message: "Update failed" });
@@ -368,7 +371,7 @@ router.get("/", async (req, res) => {
               });
 
 
-            
+             
             
 
 
@@ -395,6 +398,62 @@ router.get("/", async (req, res) => {
     );
   });
 
+
+
+// ADD STUDENT
+router.post("/", async (req, res) => {
+  try {
+    const {
+      full_name,
+      email,
+      mobile,
+      registration_no,
+      degree,
+      branch,
+      year,
+      section,
+      group_id,
+    } = req.body;
+
+    // 1. Check if user already exists
+    const [existing] = await db.promise().query(
+      "SELECT id FROM users WHERE email = ?",
+      [email]
+    );
+
+    let userId;
+
+    if (existing.length > 0) {
+      // User already exists
+      userId = existing[0].id;
+    } else {
+      // Insert new user
+      const [result] = await db.promise().query(
+        `INSERT INTO users 
+        (full_name, email, mobile, reg_no, degree, branch, year, section, role)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'student')`,
+        [full_name, email, mobile, registration_no, degree, branch, year, section]
+      );
+
+      userId = result.insertId;
+    }
+
+    // 2. Add to group
+    if (group_id && userId) {
+      await db.promise().query(
+        `INSERT IGNORE INTO group_memberships (group_id, user_id)
+         VALUES (?, ?)`,
+        [group_id, userId]
+      );
+    }
+
+    res.json({ message: "Student added successfully" });
+
+  } catch (err) {
+    console.error("ADD STUDENT ERROR:", err);
+    res.status(500).json({ message: "Add student failed" });
+  }
+});
 
   /* ================= DELETE STUDENT ================= */
 

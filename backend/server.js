@@ -24,7 +24,8 @@ import notificationsRoutes from "./routes/notifications.js";
 import folderRoutes from "./routes/folders.js";
 import notificationAnalytics from "./routes/notificationAnalytics.js";
 import adminRoutes from "./routes/admin.js";
-
+import aiRoutes from "./routes/ai.js";
+import { startScheduler } from "./services/schedulerService.js";
 
 dotenv.config();
 
@@ -72,6 +73,7 @@ app.use("/api/groups", groupRoutes);
 app.use("/api/form-assignments", formAssignmentsRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/folders", folderRoutes);
+app.use("/api", aiRoutes);
 
 app.use("/api/admin", adminRoutes);
 
@@ -84,6 +86,9 @@ app.use((req, res, next) => {
   }
   res.sendFile(path.join(frontendDistPath, "index.html"));
 });
+
+
+startScheduler();
 
 // ✅ CREATE HTTP SERVER (NOT app.listen)
 const server = http.createServer(app);
